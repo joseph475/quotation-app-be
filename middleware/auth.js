@@ -25,9 +25,6 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    // Debug: Log JWT_SECRET (remove in production)
-    console.log('JWT_SECRET:', process.env.JWT_SECRET);
-    
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 

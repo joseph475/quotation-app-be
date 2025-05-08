@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 const PurchaseReceiving = require('../models/PurchaseReceiving');
@@ -86,6 +87,20 @@ exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
 
   // Process each item
   for (const item of req.body.items) {
+    // Validate purchaseOrderItem is not empty and is a valid ObjectId
+    if (!item.purchaseOrderItem || item.purchaseOrderItem === '') {
+      return next(
+        new ErrorResponse(`Purchase order item reference cannot be empty`, 400)
+      );
+    }
+
+    // Check if it's a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(item.purchaseOrderItem)) {
+      return next(
+        new ErrorResponse(`Invalid purchase order item reference: ${item.purchaseOrderItem}`, 400)
+      );
+    }
+
     // Find the corresponding item in the purchase order
     const poItem = purchaseOrder.items.find(
       i => i._id.toString() === item.purchaseOrderItem.toString()
@@ -97,15 +112,15 @@ exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
       );
     }
 
-    // Validate quantity
+    // Calculate remaining quantity
     const remainingQuantity = poItem.quantity - poItem.receivedQuantity;
+    
+    // Allow over-receiving for all items, just add a note if it happens
     if (item.quantityReceived > remainingQuantity) {
-      return next(
-        new ErrorResponse(
-          `Cannot receive more than the remaining quantity (${remainingQuantity}) for item ${poItem.name}`,
-          400
-        )
-      );
+      // Add a note about over-receiving
+      item.notes = item.notes 
+        ? `${item.notes} | Over-received: ordered ${poItem.quantity}, already received ${poItem.receivedQuantity}, receiving ${item.quantityReceived}`
+        : `Over-received: ordered ${poItem.quantity}, already received ${poItem.receivedQuantity}, receiving ${item.quantityReceived}`;
     }
 
     // Set inventory reference if available

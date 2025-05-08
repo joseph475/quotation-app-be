@@ -24,12 +24,12 @@ router.route('/search').get(searchBranches);
 router
   .route('/')
   .get(advancedResults(Branch), getBranches)
-  .post(authorize('admin', 'manager'), createBranch);
+  .post(authorize('admin'), createBranch);
 
 router
   .route('/:id')
   .get(getBranch)
-  .put(authorize('admin', 'manager'), updateBranch)
+  .put(authorize('admin'), updateBranch)
   .delete(authorize('admin'), deleteBranch);
 
 module.exports = router;

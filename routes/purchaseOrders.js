@@ -32,17 +32,17 @@ router
     }),
     getPurchaseOrders
   )
-  .post(authorize('admin', 'manager', 'user'), createPurchaseOrder);
+  .post(authorize('admin', 'user'), createPurchaseOrder);
 
 router
   .route('/:id')
   .get(getPurchaseOrder)
-  .put(authorize('admin', 'manager'), updatePurchaseOrder)
+  .put(authorize('admin', 'user'), updatePurchaseOrder)
   .delete(authorize('admin'), deletePurchaseOrder);
 
 // Status update route
 router
   .route('/:id/status')
-  .put(authorize('admin', 'manager'), updatePurchaseOrderStatus);
+  .put(authorize('admin', 'user'), updatePurchaseOrderStatus);
 
 module.exports = router;

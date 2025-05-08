@@ -53,27 +53,16 @@ UserSchema.pre('save', async function(next) {
 
 // Sign JWT and return
 UserSchema.methods.getSignedJwtToken = function() {
-  console.log('Generating JWT token for user:', this.email);
-  console.log('JWT_SECRET:', process.env.JWT_SECRET);
-  console.log('JWT_EXPIRE:', process.env.JWT_EXPIRE);
-  
   const token = jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE
   });
   
-  console.log('Token generated successfully');
   return token;
 };
 
 // Match user entered password to hashed password in database
 UserSchema.methods.matchPassword = async function(enteredPassword) {
-  console.log('Matching password for user:', this.email);
-  console.log('Entered password:', enteredPassword);
-  console.log('Stored hashed password:', this.password);
-  
   const isMatch = await bcrypt.compare(enteredPassword, this.password);
-  console.log('Password match result:', isMatch);
-  
   return isMatch;
 };
 

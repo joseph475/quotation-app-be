@@ -46,12 +46,10 @@ exports.register = async (req, res) => {
  */
 exports.login = async (req, res) => {
   try {
-    console.log('Login attempt:', req.body);
     const { email, password } = req.body;
 
     // Validate email & password
     if (!email || !password) {
-      console.log('Missing email or password');
       return res.status(400).json({
         success: false,
         message: 'Please provide an email and password'
@@ -62,27 +60,21 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      console.log('User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
-
-    console.log('User found:', user.email, user.role);
 
     // Check if password matches
     const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {
-      console.log('Password does not match');
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
-
-    console.log('Password matches, generating token');
 
     // Send token response
     sendTokenResponse(user, 200, res);

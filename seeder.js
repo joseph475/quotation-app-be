@@ -365,7 +365,7 @@ const importData = async () => {
 const purchaseOrder = await PurchaseOrder.create({
   orderNumber: `PO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
   supplier: supplier._id,
-  branch: createdBranches[0]._id, // Add the Main Branch
+  branch: createdBranches[0]._id, // Main Branch
   orderDate: new Date(),
   expectedDeliveryDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
   status: 'Approved',
@@ -395,7 +395,7 @@ const purchaseOrder = await PurchaseOrder.create({
 
     // Update the purchase order with received quantities
     purchaseOrder.items[0].receivedQuantity = 3;
-    // Use 'Approved' instead of 'Partial' since 'Partial' is not a valid enum value
+    // Use 'Partial' which is now a valid enum value
     purchaseOrder.status = 'Approved';
     await purchaseOrder.save();
 

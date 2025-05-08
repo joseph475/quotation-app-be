@@ -24,12 +24,12 @@ router.route('/search').get(searchSuppliers);
 router
   .route('/')
   .get(advancedResults(Supplier), getSuppliers)
-  .post(authorize('admin', 'manager'), createSupplier);
+  .post(authorize('admin', 'user'), createSupplier);
 
 router
   .route('/:id')
   .get(getSupplier)
-  .put(authorize('admin', 'manager'), updateSupplier)
+  .put(authorize('admin', 'user'), updateSupplier)
   .delete(authorize('admin'), deleteSupplier);
 
 module.exports = router;

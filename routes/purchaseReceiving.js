@@ -32,12 +32,12 @@ router
     ]),
     getPurchaseReceivings
   )
-  .post(authorize('admin', 'manager'), createPurchaseReceiving);
+  .post(authorize('admin', 'user'), createPurchaseReceiving);
 
 router
   .route('/:id')
   .get(getPurchaseReceiving)
-  .put(authorize('admin', 'manager'), updatePurchaseReceiving)
+  .put(authorize('admin', 'user'), updatePurchaseReceiving)
   .delete(authorize('admin'), deletePurchaseReceiving);
 
 module.exports = router;
