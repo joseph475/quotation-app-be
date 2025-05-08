@@ -1,0 +1,79 @@
+const mongoose = require('mongoose');
+
+const InventorySchema = new mongoose.Schema({
+  itemCode: {
+    type: String,
+    required: [true, 'Please add an item code'],
+    trim: true,
+    maxlength: [20, 'Item code cannot be more than 20 characters']
+  },
+  name: {
+    type: String,
+    required: [true, 'Please add a name'],
+    trim: true,
+    maxlength: [100, 'Name cannot be more than 100 characters']
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Description cannot be more than 500 characters']
+  },
+  category: {
+    type: String,
+    required: [true, 'Please add a category'],
+    trim: true
+  },
+  unit: {
+    type: String,
+    required: [true, 'Please add a unit'],
+    trim: true
+  },
+  costPrice: {
+    type: Number,
+    required: [true, 'Please add a cost price']
+  },
+  sellingPrice: {
+    type: Number,
+    required: [true, 'Please add a selling price']
+  },
+  quantity: {
+    type: Number,
+    required: [true, 'Please add a quantity'],
+    default: 0
+  },
+  reorderLevel: {
+    type: Number,
+    default: 10
+  },
+  supplier: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Supplier'
+  },
+  branch: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Branch',
+    required: [true, 'Please specify a branch']
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Create index for search
+InventorySchema.index({ name: 'text', description: 'text', itemCode: 'text' });
+
+// Create compound index for itemCode and branch to ensure uniqueness within a branch
+InventorySchema.index({ itemCode: 1, branch: 1 }, { unique: true });
+
+// Update the updatedAt field on save
+InventorySchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
+  next();
+});
+
+module.exports = mongoose.model('Inventory', InventorySchema);

@@ -1,0 +1,37 @@
+{
+  "name": "quotation-app-be",
+  "version": "1.0.0",
+  "description": "Backend API for Quotation App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node seeder.js -i",
+    "seed:delete": "node seeder.js -d",
+    "check-db": "node check-mongodb.js",
+    "start-safe": "node start-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mongodb",
+    "express",
+    "node",
+    "api",
+    "quotation",
+    "inventory",
+    "sales"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.0.3"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
