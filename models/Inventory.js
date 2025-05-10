@@ -13,6 +13,21 @@ const InventorySchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters']
   },
+  brand: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Brand cannot be more than 50 characters']
+  },
+  model: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Model cannot be more than 50 characters']
+  },
+  color: {
+    type: String,
+    trim: true,
+    maxlength: [30, 'Color cannot be more than 30 characters']
+  },
   description: {
     type: String,
     trim: true,
@@ -35,6 +50,10 @@ const InventorySchema = new mongoose.Schema({
   sellingPrice: {
     type: Number,
     required: [true, 'Please add a selling price']
+  },
+  discount: {
+    type: Number,
+    default: 0
   },
   quantity: {
     type: Number,
@@ -65,7 +84,7 @@ const InventorySchema = new mongoose.Schema({
 });
 
 // Create index for search
-InventorySchema.index({ name: 'text', description: 'text', itemCode: 'text' });
+InventorySchema.index({ name: 'text', description: 'text', itemCode: 'text', brand: 'text', model: 'text', color: 'text' });
 
 // Create compound index for itemCode and branch to ensure uniqueness within a branch
 InventorySchema.index({ itemCode: 1, branch: 1 }, { unique: true });

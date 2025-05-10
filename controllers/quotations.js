@@ -220,6 +220,59 @@ exports.deleteQuotation = async (req, res) => {
  * @route   POST /api/v1/quotations/:id/convert
  * @access  Private
  */
+/**
+ * @desc    Reject quotation
+ * @route   POST /api/v1/quotations/:id/reject
+ * @access  Private
+ */
+exports.rejectQuotation = async (req, res) => {
+  try {
+    const quotation = await Quotation.findById(req.params.id);
+
+    if (!quotation) {
+      return res.status(404).json({
+        success: false,
+        message: `Quotation not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if quotation is active
+    if (quotation.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only active quotations can be rejected'
+      });
+    }
+
+    // Check if user is authorized to reject (only user role can reject)
+    if (req.user.role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only users can reject quotations'
+      });
+    }
+
+    // Update quotation status
+    quotation.status = 'rejected';
+    await quotation.save();
+
+    res.status(200).json({
+      success: true,
+      data: quotation
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Convert quotation to sale
+ * @route   POST /api/v1/quotations/:id/convert
+ * @access  Private
+ */
 exports.convertToSale = async (req, res) => {
   try {
     const quotation = await Quotation.findById(req.params.id);
@@ -231,16 +284,24 @@ exports.convertToSale = async (req, res) => {
       });
     }
 
-    // Check if quotation is already converted
-    if (quotation.status === 'converted') {
+    // Check if quotation is active
+    if (quotation.status !== 'active') {
       return res.status(400).json({
         success: false,
-        message: 'This quotation has already been converted to a sale'
+        message: 'Only active quotations can be converted to a sale'
+      });
+    }
+
+    // Check if user is authorized to convert (only user role can convert)
+    if (req.user.role !== 'user') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only users can convert quotations to sales'
       });
     }
 
     // Update quotation status
-    quotation.status = 'converted';
+    quotation.status = 'completed';
     await quotation.save();
 
     // Create sale from quotation data
@@ -249,6 +310,7 @@ exports.convertToSale = async (req, res) => {
     const saleData = {
       saleNumber: `S-${Date.now()}`,
       quotation: quotation._id,
+      branch: quotation.branch, // Include branch from quotation
       customer: quotation.customer,
       items: quotation.items,
       subtotal: quotation.subtotal,

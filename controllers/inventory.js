@@ -20,7 +20,10 @@ exports.searchInventory = async (req, res) => {
     const searchFilter = {
       $or: [
         { name: { $regex: query, $options: 'i' } },
-        { itemCode: { $regex: query, $options: 'i' } }
+        { itemCode: { $regex: query, $options: 'i' } },
+        { brand: { $regex: query, $options: 'i' } },
+        { model: { $regex: query, $options: 'i' } },
+        { color: { $regex: query, $options: 'i' } }
       ]
     };
     
@@ -31,10 +34,18 @@ exports.searchInventory = async (req, res) => {
     
     const inventory = await Inventory.find(searchFilter).populate('branch', 'name');
     
+    // Ensure discount and unit are properly set for all items
+    const inventoryData = inventory.map(item => {
+      const itemObj = item.toObject();
+      itemObj.discount = itemObj.discount !== undefined ? itemObj.discount : 0;
+      itemObj.unit = itemObj.unit || 'pcs';
+      return itemObj;
+    });
+    
     res.status(200).json({
       success: true,
-      count: inventory.length,
-      data: inventory
+      count: inventoryData.length,
+      data: inventoryData
     });
   } catch (err) {
     res.status(400).json({
@@ -95,6 +106,14 @@ exports.getInventory = async (req, res) => {
     // Executing query
     const inventory = await query;
 
+    // Ensure discount and unit are properly set for all items
+    const inventoryData = inventory.map(item => {
+      const itemObj = item.toObject();
+      itemObj.discount = itemObj.discount !== undefined ? itemObj.discount : 0;
+      itemObj.unit = itemObj.unit || 'pcs';
+      return itemObj;
+    });
+
     // Pagination result
     const pagination = {};
 
@@ -114,9 +133,9 @@ exports.getInventory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: inventory.length,
+      count: inventoryData.length,
       pagination,
-      data: inventory
+      data: inventoryData
     });
   } catch (err) {
     res.status(400).json({
@@ -142,9 +161,14 @@ exports.getInventoryItem = async (req, res) => {
       });
     }
 
+    // Ensure discount and unit are properly set in the response
+    const itemData = item.toObject();
+    itemData.discount = itemData.discount !== undefined ? itemData.discount : 0;
+    itemData.unit = itemData.unit || 'pcs';
+
     res.status(200).json({
       success: true,
-      data: item
+      data: itemData
     });
   } catch (err) {
     res.status(400).json({
@@ -161,7 +185,14 @@ exports.getInventoryItem = async (req, res) => {
  */
 exports.createInventoryItem = async (req, res) => {
   try {
-    const item = await Inventory.create(req.body);
+    // Ensure discount and unit are properly set
+    const itemData = {
+      ...req.body,
+      discount: req.body.discount || 0,
+      unit: req.body.unit || 'pcs'
+    };
+    
+    const item = await Inventory.create(itemData);
 
     res.status(201).json({
       success: true,
@@ -182,7 +213,14 @@ exports.createInventoryItem = async (req, res) => {
  */
 exports.updateInventoryItem = async (req, res) => {
   try {
-    const item = await Inventory.findByIdAndUpdate(req.params.id, req.body, {
+    // Ensure discount and unit are properly set
+    const itemData = {
+      ...req.body,
+      discount: req.body.discount !== undefined ? req.body.discount : 0,
+      unit: req.body.unit || 'pcs'
+    };
+    
+    const item = await Inventory.findByIdAndUpdate(req.params.id, itemData, {
       new: true,
       runValidators: true
     });
@@ -259,6 +297,14 @@ exports.getInventoryByBranch = async (req, res) => {
     // Executing query
     const inventory = await query;
 
+    // Ensure discount and unit are properly set for all items
+    const inventoryData = inventory.map(item => {
+      const itemObj = item.toObject();
+      itemObj.discount = itemObj.discount !== undefined ? itemObj.discount : 0;
+      itemObj.unit = itemObj.unit || 'pcs';
+      return itemObj;
+    });
+
     // Pagination result
     const pagination = {};
 
@@ -278,9 +324,9 @@ exports.getInventoryByBranch = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: inventory.length,
+      count: inventoryData.length,
       pagination,
-      data: inventory
+      data: inventoryData
     });
   } catch (err) {
     res.status(400).json({

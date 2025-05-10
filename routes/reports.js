@@ -12,8 +12,8 @@ const router = express.Router();
 // Protect all routes - require authentication
 router.use(protect);
 
-// Restrict to admin role
-router.use(authorize('admin'));
+// Allow both admin and user roles to access reports
+router.use(authorize('admin', 'user'));
 
 // Report routes
 router.get('/sales', getSalesReport);

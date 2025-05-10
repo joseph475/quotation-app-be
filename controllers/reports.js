@@ -6,7 +6,7 @@ const Customer = require('../models/Customer');
 /**
  * @desc    Get sales report
  * @route   GET /api/v1/reports/sales
- * @access  Private/Admin
+ * @access  Private/Admin,User
  */
 exports.getSalesReport = async (req, res, next) => {
   try {
@@ -84,7 +84,7 @@ exports.getSalesReport = async (req, res, next) => {
 /**
  * @desc    Get inventory report
  * @route   GET /api/v1/reports/inventory
- * @access  Private/Admin
+ * @access  Private/Admin,User
  */
 exports.getInventoryReport = async (req, res, next) => {
   try {
@@ -150,7 +150,7 @@ exports.getInventoryReport = async (req, res, next) => {
 /**
  * @desc    Get purchases report
  * @route   GET /api/v1/reports/purchases
- * @access  Private/Admin
+ * @access  Private/Admin,User
  */
 exports.getPurchasesReport = async (req, res, next) => {
   try {
@@ -228,7 +228,7 @@ exports.getPurchasesReport = async (req, res, next) => {
 /**
  * @desc    Get customers report
  * @route   GET /api/v1/reports/customers
- * @access  Private/Admin
+ * @access  Private/Admin,User
  */
 exports.getCustomersReport = async (req, res, next) => {
   try {

@@ -12,6 +12,11 @@ const QuotationSchema = new mongoose.Schema({
     ref: 'Customer',
     required: [true, 'Please add a customer']
   },
+  branch: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Branch',
+    required: [true, 'Please add a branch']
+  },
   items: [
     {
       inventory: {
@@ -64,8 +69,8 @@ const QuotationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'sent', 'accepted', 'rejected', 'expired', 'converted'],
-    default: 'draft'
+    enum: ['active', 'rejected', 'completed'],
+    default: 'active'
   },
   validUntil: {
     type: Date,
@@ -100,11 +105,14 @@ QuotationSchema.pre('save', function(next) {
   next();
 });
 
-// Populate customer and inventory items when finding a quotation
+// Populate customer, branch, and inventory items when finding a quotation
 QuotationSchema.pre(/^find/, function(next) {
   this.populate({
     path: 'customer',
     select: 'name phone'
+  }).populate({
+    path: 'branch',
+    select: 'name address'
   }).populate({
     path: 'items.inventory',
     select: 'name itemCode'

@@ -3,6 +3,29 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 /**
+ * @desc    Logout user
+ * @route   POST /api/v1/auth/logout
+ * @access  Private
+ */
+exports.logout = async (req, res) => {
+  try {
+    // In a stateless JWT authentication system, we don't need to do anything server-side
+    // The token is stored client-side and will be removed by the frontend
+    // This endpoint exists for API completeness and potential future enhancements
+    
+    res.status(200).json({
+      success: true,
+      message: 'Successfully logged out'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
  * @desc    Register user
  * @route   POST /api/v1/auth/register
  * @access  Public
