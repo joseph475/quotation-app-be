@@ -173,7 +173,7 @@ exports.updateSale = async (req, res) => {
 
     // Make sure user is sale creator or admin
     if (sale.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to update this sale`
       });
@@ -235,7 +235,7 @@ exports.deleteSale = async (req, res) => {
 
     // Make sure user is sale creator or admin
     if (sale.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to delete this sale`
       });

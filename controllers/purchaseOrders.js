@@ -531,6 +531,9 @@ exports.updatePurchaseOrderStatus = asyncHandler(async (req, res, next) => {
     }
   );
 
+  // We're removing the automatic creation of purchase receiving records when a PO is approved
+  // This will be handled manually by the user through the UI to prevent duplicate records
+
   res.status(200).json({
     success: true,
     data: purchaseOrder

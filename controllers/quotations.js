@@ -154,7 +154,7 @@ exports.updateQuotation = async (req, res) => {
 
     // Make sure user is quotation creator or admin
     if (quotation.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to update this quotation`
       });
@@ -195,7 +195,7 @@ exports.deleteQuotation = async (req, res) => {
 
     // Make sure user is quotation creator or admin
     if (quotation.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(401).json({
+      return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to delete this quotation`
       });

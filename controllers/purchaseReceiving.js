@@ -34,6 +34,20 @@ exports.getPurchaseReceiving = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/purchase-receiving
 // @access  Private
 exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
+  // Remove _id field if present to let MongoDB generate it
+  if (req.body._id !== undefined) {
+    delete req.body._id;
+  }
+  
+  // Remove any _id fields from items array to prevent casting errors
+  if (req.body.items && Array.isArray(req.body.items)) {
+    req.body.items = req.body.items.map(item => {
+      // Create a new object without the _id field
+      const { _id, ...itemWithoutId } = item;
+      return itemWithoutId;
+    });
+  }
+  
   // Add user to req.body
   req.body.createdBy = req.user.id;
 
@@ -56,6 +70,10 @@ exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Get existing receiving records for this purchase order (for reference only)
+  const existingReceivings = await PurchaseReceiving.find({ purchaseOrder: req.body.purchaseOrder });
+  console.log(`Found ${existingReceivings.length} existing receiving records for purchase order ${req.body.purchaseOrder}`);
+
   // Set supplier from purchase order
   req.body.supplier = purchaseOrder.supplier;
 
@@ -65,19 +83,36 @@ exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     
-    // Get the latest receiving to increment the number
-    const latestReceiving = await PurchaseReceiving.findOne().sort('-createdAt');
+    // Use a more robust approach to generate a unique receiving number
+    // Find the highest number for the current year and month
+    const regex = new RegExp(`^GR-${year}-${month}-\\d{4}$`);
+    const existingReceivings = await PurchaseReceiving.find({ 
+      receivingNumber: regex 
+    }).sort('-receivingNumber');
+    
     let nextNumber = 1;
     
-    if (latestReceiving && latestReceiving.receivingNumber) {
-      // Extract the number part from the latest receiving number (assuming format GR-YYYY-MM-XXXX)
-      const parts = latestReceiving.receivingNumber.split('-');
+    if (existingReceivings.length > 0) {
+      // Extract the number part from the highest receiving number
+      const parts = existingReceivings[0].receivingNumber.split('-');
       if (parts.length === 4) {
         nextNumber = parseInt(parts[3]) + 1;
       }
     }
     
     req.body.receivingNumber = `GR-${year}-${month}-${String(nextNumber).padStart(4, '0')}`;
+    
+    // Double-check that this receiving number doesn't already exist
+    // This handles edge cases in case of concurrent requests
+    const duplicateCheck = await PurchaseReceiving.findOne({ 
+      receivingNumber: req.body.receivingNumber 
+    });
+    
+    if (duplicateCheck) {
+      // If we found a duplicate, increment the number and try again
+      nextNumber++;
+      req.body.receivingNumber = `GR-${year}-${month}-${String(nextNumber).padStart(4, '0')}`;
+    }
   }
 
   // Validate items
@@ -186,7 +221,12 @@ exports.updatePurchaseReceiving = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Only allow updating notes, status, and branch
+  // Remove _id field if present to prevent casting errors
+  if (req.body._id !== undefined) {
+    delete req.body._id;
+  }
+  
+  // Allow updating notes, status, branch, and items
   const allowedUpdates = {
     notes: req.body.notes,
     status: req.body.status
@@ -203,6 +243,21 @@ exports.updatePurchaseReceiving = asyncHandler(async (req, res, next) => {
         new ErrorResponse('Please add a branch. User does not have a default branch assigned.', 400)
       );
     }
+  }
+
+  // Allow updating items if provided
+  if (req.body.items && Array.isArray(req.body.items)) {
+    // Remove any _id fields from items array to prevent casting errors
+    allowedUpdates.items = req.body.items.map(item => {
+      // Create a new object without the _id field
+      const { _id, ...itemWithoutId } = item;
+      return itemWithoutId;
+    });
+  }
+
+  // Allow updating receivingDate if provided
+  if (req.body.receivingDate) {
+    allowedUpdates.receivingDate = req.body.receivingDate;
   }
 
   purchaseReceiving = await PurchaseReceiving.findByIdAndUpdate(

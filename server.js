@@ -41,6 +41,7 @@ app.use('/api/v1/purchase-receiving', require('./routes/purchaseReceiving'));
 app.use('/api/v1/stock-transfers', require('./routes/stockTransfers'));
 app.use('/api/v1/branches', require('./routes/branches'));
 app.use('/api/v1/users', require('./routes/users'));
+app.use('/api/v1/reports', require('./routes/reports'));
 
 // Root route
 app.get('/', (req, res) => {
