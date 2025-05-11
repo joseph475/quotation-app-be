@@ -178,17 +178,8 @@ exports.createPurchaseReceiving = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // Check if all items are fully received
-  const allItemsReceived = purchaseOrder.items.every(
-    item => item.receivedQuantity >= item.quantity
-  );
-
-  // Update purchase order status if all items are received
-  if (allItemsReceived) {
-    purchaseOrder.status = 'Completed';
-  } else if (purchaseOrder.items.some(item => item.receivedQuantity > 0)) {
-    purchaseOrder.status = 'Partial';
-  }
+  // Always set purchase order status to Completed when receiving
+  purchaseOrder.status = 'Completed';
 
   await purchaseOrder.save();
 

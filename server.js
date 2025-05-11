@@ -36,6 +36,7 @@ app.use('/api/v1/quotations', require('./routes/quotations'));
 app.use('/api/v1/sales', require('./routes/sales'));
 app.use('/api/v1/dashboard', require('./routes/dashboard'));
 app.use('/api/v1/suppliers', require('./routes/suppliers'));
+app.use('/api/v1/supplier-prices', require('./routes/supplierPrices'));
 app.use('/api/v1/purchase-orders', require('./routes/purchaseOrders'));
 app.use('/api/v1/purchase-receiving', require('./routes/purchaseReceiving'));
 app.use('/api/v1/stock-transfers', require('./routes/stockTransfers'));

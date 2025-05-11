@@ -21,6 +21,26 @@ exports.getSupplier = asyncHandler(async (req, res, next) => {
     );
   }
 
+  // Check if the request includes a query parameter to include prices
+  if (req.query.includePrices === 'true') {
+    // Import the SupplierPrice model
+    const SupplierPrice = require('../models/SupplierPrice');
+    
+    // Get supplier prices for this supplier
+    const supplierPrices = await SupplierPrice.find({ supplier: req.params.id })
+      .populate({
+        path: 'inventory',
+        select: 'name itemCode costPrice'
+      });
+    
+    // Add supplier prices to the response
+    return res.status(200).json({
+      success: true,
+      data: supplier,
+      prices: supplierPrices
+    });
+  }
+
   res.status(200).json({
     success: true,
     data: supplier

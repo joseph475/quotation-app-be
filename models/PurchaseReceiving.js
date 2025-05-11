@@ -62,7 +62,7 @@ const PurchaseReceivingSchema = new mongoose.Schema({
   ],
   status: {
     type: String,
-    enum: ['Pending', 'Completed', 'Partial'],
+    enum: ['Pending', 'Completed'],
     default: 'Completed'
   },
   notes: {

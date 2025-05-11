@@ -166,6 +166,26 @@ exports.getInventoryItem = async (req, res) => {
     itemData.discount = itemData.discount !== undefined ? itemData.discount : 0;
     itemData.unit = itemData.unit || 'pcs';
 
+    // Check if the request includes a query parameter to include supplier prices
+    if (req.query.includeSupplierPrices === 'true') {
+      // Import the SupplierPrice model
+      const SupplierPrice = require('../models/SupplierPrice');
+      
+      // Get supplier prices for this inventory item
+      const supplierPrices = await SupplierPrice.find({ inventory: req.params.id })
+        .populate({
+          path: 'supplier',
+          select: 'name contactPerson'
+        });
+      
+      // Add supplier prices to the response
+      return res.status(200).json({
+        success: true,
+        data: itemData,
+        supplierPrices: supplierPrices
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: itemData
