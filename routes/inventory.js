@@ -5,7 +5,6 @@ const {
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,
-  getInventoryByBranch,
   searchInventory
 } = require('../controllers/inventory');
 
@@ -24,7 +23,6 @@ router.route('/')
 
 // Define special routes first
 router.get('/search-items', searchInventory);
-router.get('/branch/:branchId', getInventoryByBranch);
 
 // Define parameterized routes last
 

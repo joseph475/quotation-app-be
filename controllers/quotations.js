@@ -310,7 +310,6 @@ exports.convertToSale = async (req, res) => {
     const saleData = {
       saleNumber: `S-${Date.now()}`,
       quotation: quotation._id,
-      branch: quotation.branch, // Include branch from quotation
       customer: quotation.customer,
       items: quotation.items,
       subtotal: quotation.subtotal,

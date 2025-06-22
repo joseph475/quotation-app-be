@@ -11,11 +11,6 @@ const SaleSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'Quotation'
   },
-  branch: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a branch']
-  },
   customer: {
     type: mongoose.Schema.ObjectId,
     ref: 'Customer',
@@ -121,14 +116,11 @@ SaleSchema.pre('save', function(next) {
   next();
 });
 
-// Populate customer, branch, and inventory items when finding a sale
+// Populate customer and inventory items when finding a sale
 SaleSchema.pre(/^find/, function(next) {
   this.populate({
     path: 'customer',
     select: 'name phone'
-  }).populate({
-    path: 'branch',
-    select: 'name address'
   }).populate({
     path: 'items.inventory',
     select: 'name itemCode'

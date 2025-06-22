@@ -3,12 +3,12 @@ const mongoose = require('mongoose');
 const CustomerSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Please add a name'],
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters']
   },
   contactPerson: {
     type: String,
+    required: [true, 'Please add a contact person'],
     trim: true,
     maxlength: [100, 'Contact person name cannot be more than 100 characters']
   },
@@ -44,7 +44,7 @@ const CustomerSchema = new mongoose.Schema({
 });
 
 // Create index for search
-CustomerSchema.index({ name: 'text', phone: 'text' });
+CustomerSchema.index({ name: 'text', contactPerson: 'text', phone: 'text' });
 
 // Update the updatedAt field on save
 CustomerSchema.pre('save', function(next) {

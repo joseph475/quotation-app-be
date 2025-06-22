@@ -40,9 +40,10 @@ app.use('/api/v1/supplier-prices', require('./routes/supplierPrices'));
 app.use('/api/v1/purchase-orders', require('./routes/purchaseOrders'));
 app.use('/api/v1/purchase-receiving', require('./routes/purchaseReceiving'));
 app.use('/api/v1/stock-transfers', require('./routes/stockTransfers'));
-app.use('/api/v1/branches', require('./routes/branches'));
 app.use('/api/v1/users', require('./routes/users'));
 app.use('/api/v1/reports', require('./routes/reports'));
+app.use('/api/v1/inventory-history', require('./routes/inventoryHistory'));
+app.use('/api/v1/cost-history', require('./routes/costHistory'));
 
 // Root route
 app.get('/', (req, res) => {

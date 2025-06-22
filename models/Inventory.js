@@ -68,11 +68,6 @@ const InventorySchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'Supplier'
   },
-  branch: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please specify a branch']
-  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -86,8 +81,8 @@ const InventorySchema = new mongoose.Schema({
 // Create index for search
 InventorySchema.index({ name: 'text', description: 'text', itemCode: 'text', brand: 'text', model: 'text', color: 'text' });
 
-// Create compound index for itemCode and branch to ensure uniqueness within a branch
-InventorySchema.index({ itemCode: 1, branch: 1 }, { unique: true });
+// Create unique index for itemCode
+InventorySchema.index({ itemCode: 1 }, { unique: true });
 
 // Update the updatedAt field on save
 InventorySchema.pre('save', function(next) {
