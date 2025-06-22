@@ -36,7 +36,6 @@ exports.getSalesReport = async (req, res, next) => {
     // Get sales within date range
     const sales = await Sale.find(query)
       .populate('customer', 'name email')
-      .populate('branch', 'name')
       .sort({ createdAt: -1 });
     
     // Calculate summary statistics
@@ -100,7 +99,6 @@ exports.getInventoryReport = async (req, res, next) => {
     
     // Get inventory items
     const products = await Inventory.find(query)
-      .populate('branch', 'name')
       .sort({ name: 1 });
     
     // Calculate summary statistics
@@ -180,7 +178,6 @@ exports.getPurchasesReport = async (req, res, next) => {
     // Get purchase orders within date range
     const purchases = await PurchaseOrder.find(query)
       .populate('supplier', 'name')
-      .populate('branch', 'name')
       .sort({ createdAt: -1 });
     
     // Calculate summary statistics

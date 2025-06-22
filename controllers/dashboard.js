@@ -48,7 +48,7 @@ exports.getDashboardSummary = async (req, res) => {
       },
       {
         $group: {
-          _id: { month: { $month: '$createdAt' }, branch: '$branch' },
+          _id: { month: { $month: '$createdAt' } },
           total: { $sum: '$total' },
           count: { $sum: 1 }
         }
@@ -61,28 +61,12 @@ exports.getDashboardSummary = async (req, res) => {
     // Format monthly sales data
     const monthlyData = Array(12).fill().map((_, i) => {
       const monthNumber = i + 1;
-      const monthData = monthlySales.filter(m => m._id.month === monthNumber);
-      
-      // Sum up totals and counts for all branches in this month
-      const total = monthData.reduce((sum, item) => sum + item.total, 0);
-      const count = monthData.reduce((sum, item) => sum + item.count, 0);
-      
-      // Group by branch
-      const branchData = {};
-      monthData.forEach(item => {
-        if (item._id.branch) {
-          branchData[item._id.branch.toString()] = {
-            total: item.total,
-            count: item.count
-          };
-        }
-      });
+      const monthData = monthlySales.find(m => m._id.month === monthNumber);
       
       return {
         month: monthNumber,
-        total,
-        count,
-        branches: branchData
+        total: monthData ? monthData.total : 0,
+        count: monthData ? monthData.count : 0
       };
     });
 
@@ -124,10 +108,6 @@ exports.getRecentSales = async (req, res) => {
       .populate({
         path: 'customer',
         select: 'name'
-      })
-      .populate({
-        path: 'branch',
-        select: 'name address'
       });
 
     res.status(200).json({
