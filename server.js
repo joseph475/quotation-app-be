@@ -46,7 +46,23 @@ app.use('/api/v1/reports', require('./routes/reports'));
 
 // Root route
 app.get('/', (req, res) => {
-  res.send('Quotation App API is running');
+  res.json({
+    success: true,
+    message: 'Quotation App API is running',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'healthy',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
 });
 
 
@@ -68,8 +84,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Export the app for Vercel
+module.exports = app;
+
+// Start server only if not in Vercel environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const PORT = process.env.PORT || 8000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}

@@ -22,8 +22,7 @@ npm install
 4. Create a `.env` file in the root directory with the following variables:
 
 ```
-NODE_ENV=development
-PORT=8000
+NODE_ENV=development8000
 MONGODB_URI=mongodb://localhost:27017/quotation-app
 JWT_SECRET=your_jwt_secret_key_here
 JWT_EXPIRE=30d
@@ -164,6 +163,17 @@ npm run seed:delete
 - `GET /api/v1/dashboard/recent-sales` - Get recent sales
 - `GET /api/v1/dashboard/low-stock` - Get low stock items
 
+## Deployment
+
+This backend is ready for deployment on Vercel. See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+### Quick Deploy to Vercel
+
+1. Push your code to GitHub
+2. Connect your repository to Vercel
+3. Set up environment variables in Vercel dashboard
+4. Deploy
+
 ## Database Schema
 
 The application uses MongoDB with Mongoose for data modeling. The main collections are:
@@ -175,3 +185,17 @@ The application uses MongoDB with Mongoose for data modeling. The main collectio
 - Sales
 
 Refer to the models directory for detailed schema information.
+
+## Project Structure
+
+```
+├── config/              # Configuration files
+├── controllers/         # Route controllers
+├── middleware/          # Custom middleware
+├── models/             # Mongoose models
+├── routes/             # API routes
+├── utils/              # Utility functions
+├── server.js           # Main application file
+├── vercel.json         # Vercel deployment configuration
+└── DEPLOYMENT.md       # Deployment guide
+```
