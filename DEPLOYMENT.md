@@ -110,3 +110,23 @@ Once deployed, your API will be available at:
 - Consider implementing caching for frequently accessed data
 - Monitor cold start times and optimize if needed
 - Use MongoDB indexes for better query performance
+
+## Project Structure
+
+The project is structured for Vercel's serverless architecture:
+
+```
+├── api/                # Vercel serverless functions
+│   └── index.js        # Main serverless function entry point
+├── config/             # Configuration files
+├── controllers/        # Route controllers
+├── middleware/         # Custom middleware
+├── models/             # Mongoose models
+├── routes/             # API routes
+├── utils/              # Utility functions
+├── server.js           # Express app (imported by api/index.js)
+├── vercel.json         # Vercel deployment configuration
+└── DEPLOYMENT.md       # This deployment guide
+```
+
+**Important**: The `api/index.js` file serves as the entry point for Vercel's serverless functions, which imports and exports the main Express app from `server.js`.
