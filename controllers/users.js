@@ -57,7 +57,7 @@ exports.getUser = async (req, res) => {
  */
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, branch } = req.body;
+    const { name, email, phone, department, isActive, password, role, branch } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -69,6 +69,21 @@ exports.createUser = async (req, res) => {
       });
     }
 
+    // Get environment variable for user role limit
+    const maxUserRoleUsers = parseInt(process.env.MAX_USER_ROLE_USERS) || 3;
+
+    // Check if trying to create a user with role 'user' and if limit is reached
+    if (role === 'user' || !role) { // Default role is 'user'
+      const userRoleCount = await User.countDocuments({ role: 'user' });
+      
+      if (userRoleCount >= maxUserRoleUsers) {
+        return res.status(400).json({
+          success: false,
+          message: `Maximum limit of ${maxUserRoleUsers} users with role 'user' has been reached`
+        });
+      }
+    }
+
     // Set branch to 'All' if role is admin
     const userBranch = role === 'admin' ? 'All' : branch || '';
 
@@ -76,6 +91,9 @@ exports.createUser = async (req, res) => {
     const user = await User.create({
       name,
       email,
+      phone,
+      department,
+      isActive: isActive !== undefined ? isActive : true,
       password,
       role: role || 'user',
       branch: userBranch
@@ -105,6 +123,28 @@ exports.updateUser = async (req, res) => {
       delete req.body.password;
     }
     
+    // Get current user to check if role is being changed
+    const currentUser = await User.findById(req.params.id);
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: `No user found with id ${req.params.id}`
+      });
+    }
+
+    // Check if trying to change role to 'user' and if limit is reached
+    if (req.body.role === 'user' && currentUser.role !== 'user') {
+      const maxUserRoleUsers = parseInt(process.env.MAX_USER_ROLE_USERS) || 3;
+      const userRoleCount = await User.countDocuments({ role: 'user' });
+      
+      if (userRoleCount >= maxUserRoleUsers) {
+        return res.status(400).json({
+          success: false,
+          message: `Maximum limit of ${maxUserRoleUsers} users with role 'user' has been reached`
+        });
+      }
+    }
+    
     // Set branch to 'All' if role is admin
     if (req.body.role === 'admin') {
       req.body.branch = 'All';
@@ -114,13 +154,6 @@ exports.updateUser = async (req, res) => {
       new: true,
       runValidators: true
     });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: `No user found with id ${req.params.id}`
-      });
-    }
     
     res.status(200).json({
       success: true,
@@ -155,6 +188,42 @@ exports.deleteUser = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {}
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Server Error'
+    });
+  }
+};
+
+/**
+ * @desc    Get user role statistics
+ * @route   GET /api/v1/users/stats/roles
+ * @access  Private/Admin
+ */
+exports.getUserRoleStats = async (req, res) => {
+  try {
+    const maxUserRoleUsers = parseInt(process.env.MAX_USER_ROLE_USERS) || 3;
+    
+    // Get counts for each role
+    const userRoleCount = await User.countDocuments({ role: 'user' });
+    const adminRoleCount = await User.countDocuments({ role: 'admin' });
+    const totalUsers = await User.countDocuments();
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        roles: {
+          user: userRoleCount,
+          admin: adminRoleCount,
+          total: totalUsers
+        },
+        limits: {
+          maxUserRoleUsers: maxUserRoleUsers,
+          remainingUserSlots: Math.max(0, maxUserRoleUsers - userRoleCount)
+        }
+      }
     });
   } catch (err) {
     res.status(500).json({

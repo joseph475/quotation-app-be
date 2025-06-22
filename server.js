@@ -30,6 +30,8 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quotation
 
 // Routes
 app.use('/api/v1/auth', require('./routes/auth'));
+app.use('/api/v1/devices', require('./routes/deviceFingerprint'));
+app.use('/api/v1/test', require('./routes/test'));
 app.use('/api/v1/inventory', require('./routes/inventory'));
 app.use('/api/v1/customers', require('./routes/customers'));
 app.use('/api/v1/quotations', require('./routes/quotations'));

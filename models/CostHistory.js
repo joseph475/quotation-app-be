@@ -42,11 +42,6 @@ const CostHistorySchema = new mongoose.Schema({
     ref: 'User',
     required: [true, 'Please add a user ID']
   },
-  branchId: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a branch ID']
-  },
   date: {
     type: String,
     required: true
@@ -69,7 +64,6 @@ CostHistorySchema.index({ itemId: 1, createdAt: -1 });
 CostHistorySchema.index({ date: 1 });
 CostHistorySchema.index({ month: 1 });
 CostHistorySchema.index({ userId: 1, createdAt: -1 });
-CostHistorySchema.index({ branchId: 1, createdAt: -1 });
 CostHistorySchema.index({ changeType: 1, createdAt: -1 });
 
 module.exports = mongoose.model('CostHistory', CostHistorySchema);

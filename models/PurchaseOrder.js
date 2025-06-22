@@ -12,11 +12,6 @@ const PurchaseOrderSchema = new mongoose.Schema({
     ref: 'Supplier',
     required: [true, 'Please add a supplier']
   },
-  branch: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a branch']
-  },
   orderDate: {
     type: Date,
     required: [true, 'Please add an order date'],

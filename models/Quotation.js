@@ -64,8 +64,8 @@ const QuotationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'rejected', 'completed'],
-    default: 'active'
+    enum: ['pending', 'approved', 'rejected', 'completed', 'draft', 'active', 'accepted'],
+    default: 'pending'
   },
   validUntil: {
     type: Date,
@@ -104,7 +104,7 @@ QuotationSchema.pre('save', function(next) {
 QuotationSchema.pre(/^find/, function(next) {
   this.populate({
     path: 'customer',
-    select: 'name phone'
+    select: 'name contactPerson phone'
   }).populate({
     path: 'items.inventory',
     select: 'name itemCode'

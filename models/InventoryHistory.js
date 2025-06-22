@@ -52,15 +52,6 @@ const InventoryHistorySchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please add a user name']
   },
-  branchId: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a branch ID']
-  },
-  branchName: {
-    type: String,
-    required: [true, 'Please add a branch name']
-  },
   date: {
     type: String,
     required: true
@@ -79,6 +70,5 @@ InventoryHistorySchema.index({ operation: 1, createdAt: -1 });
 InventoryHistorySchema.index({ date: 1 });
 InventoryHistorySchema.index({ month: 1 });
 InventoryHistorySchema.index({ userId: 1, createdAt: -1 });
-InventoryHistorySchema.index({ branchId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('InventoryHistory', InventoryHistorySchema);

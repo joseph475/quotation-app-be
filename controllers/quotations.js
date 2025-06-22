@@ -221,6 +221,54 @@ exports.deleteQuotation = async (req, res) => {
  * @access  Private
  */
 /**
+ * @desc    Approve quotation
+ * @route   POST /api/v1/quotations/:id/approve
+ * @access  Private
+ */
+exports.approveQuotation = async (req, res) => {
+  try {
+    const quotation = await Quotation.findById(req.params.id);
+
+    if (!quotation) {
+      return res.status(404).json({
+        success: false,
+        message: `Quotation not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if quotation is pending
+    if (quotation.status !== 'pending' && quotation.status !== 'draft') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only pending quotations can be approved'
+      });
+    }
+
+    // Check if user is authorized to approve (only admin role can approve)
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can approve quotations'
+      });
+    }
+
+    // Update quotation status
+    quotation.status = 'approved';
+    await quotation.save();
+
+    res.status(200).json({
+      success: true,
+      data: quotation
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
  * @desc    Reject quotation
  * @route   POST /api/v1/quotations/:id/reject
  * @access  Private
@@ -236,19 +284,19 @@ exports.rejectQuotation = async (req, res) => {
       });
     }
 
-    // Check if quotation is active
-    if (quotation.status !== 'active') {
+    // Check if quotation is pending
+    if (quotation.status !== 'pending' && quotation.status !== 'draft') {
       return res.status(400).json({
         success: false,
-        message: 'Only active quotations can be rejected'
+        message: 'Only pending quotations can be rejected'
       });
     }
 
-    // Check if user is authorized to reject (only user role can reject)
-    if (req.user.role !== 'user') {
+    // Check if user is authorized to reject (only admin role can reject)
+    if (req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'Only users can reject quotations'
+        message: 'Only administrators can reject quotations'
       });
     }
 
@@ -284,11 +332,11 @@ exports.convertToSale = async (req, res) => {
       });
     }
 
-    // Check if quotation is active
-    if (quotation.status !== 'active') {
+    // Check if quotation is approved
+    if (quotation.status !== 'approved') {
       return res.status(400).json({
         success: false,
-        message: 'Only active quotations can be converted to a sale'
+        message: 'Only approved quotations can be converted to a sale'
       });
     }
 

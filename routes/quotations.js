@@ -6,7 +6,8 @@ const {
   updateQuotation,
   deleteQuotation,
   convertToSale,
-  rejectQuotation
+  rejectQuotation,
+  approveQuotation
 } = require('../controllers/quotations');
 
 const router = express.Router();
@@ -32,5 +33,8 @@ router.route('/:id/convert')
 
 router.route('/:id/reject')
   .post(rejectQuotation);
+
+router.route('/:id/approve')
+  .post(approveQuotation);
 
 module.exports = router;

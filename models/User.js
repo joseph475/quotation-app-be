@@ -18,14 +18,24 @@ const UserSchema = new mongoose.Schema({
       'Please add a valid email'
     ]
   },
+  phone: {
+    type: String,
+    trim: true,
+    maxlength: [20, 'Phone number cannot be more than 20 characters']
+  },
+  department: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Department cannot be more than 50 characters']
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],
     default: 'user'
-  },
-  branch: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch'
   },
   password: {
     type: String,

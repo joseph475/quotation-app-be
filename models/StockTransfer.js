@@ -12,24 +12,6 @@ const StockTransferSchema = new mongoose.Schema({
     ref: 'Inventory',
     required: [true, 'Please add an inventory item']
   },
-  fromBranch: {
-    type: String,
-    required: [true, 'Please add a source branch']
-  },
-  fromBranchId: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a source branch ID']
-  },
-  toBranch: {
-    type: String,
-    required: [true, 'Please add a destination branch']
-  },
-  toBranchId: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Branch',
-    required: [true, 'Please add a destination branch ID']
-  },
   quantity: {
     type: Number,
     required: [true, 'Please add a quantity'],

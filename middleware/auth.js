@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const DeviceFingerprint = require('../models/DeviceFingerprint');
 
 /**
  * Protect routes - middleware to check if user is authenticated
@@ -37,6 +38,15 @@ exports.protect = async (req, res, next) => {
         message: 'User not found'
       });
     }
+
+    // Check if user account is active
+    if (req.user.isActive === false) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact an administrator.'
+      });
+    }
+
 
     next();
   } catch (err) {

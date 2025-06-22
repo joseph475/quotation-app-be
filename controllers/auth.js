@@ -1,6 +1,8 @@
 const User = require('../models/User');
+const DeviceFingerprint = require('../models/DeviceFingerprint');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 /**
  * @desc    Logout user
@@ -9,9 +11,18 @@ const bcrypt = require('bcryptjs');
  */
 exports.logout = async (req, res) => {
   try {
-    // In a stateless JWT authentication system, we don't need to do anything server-side
-    // The token is stored client-side and will be removed by the frontend
-    // This endpoint exists for API completeness and potential future enhancements
+    // Only deactivate device sessions for non-admin users
+    if (req.user && req.user.id) {
+      if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+        console.log(`Admin user logout - not deactivating device sessions for user: ${req.user.id}`);
+      } else {
+        await DeviceFingerprint.updateMany(
+          { userId: req.user.id, isActive: true },
+          { isActive: false }
+        );
+        console.log(`Deactivated all sessions for user: ${req.user.id}`);
+      }
+    }
     
     res.status(200).json({
       success: true,
@@ -69,7 +80,7 @@ exports.register = async (req, res) => {
  */
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, deviceFingerprint } = req.body;
 
     // Validate email & password
     if (!email || !password) {
@@ -99,8 +110,59 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Send token response
-    sendTokenResponse(user, 200, res);
+    // Check if user account is active
+    if (user.isActive === false) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact an administrator.'
+      });
+    }
+
+    // Process device fingerprint if provided (skip for admin roles)
+    let securityAnalysis = null;
+    console.log('Checking for device fingerprint in request body...');
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Device fingerprint exists:', !!deviceFingerprint);
+    console.log('User role:', user.role);
+    
+    // Skip fingerprinting for admin roles
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      console.log('Admin user detected - skipping device fingerprinting restrictions');
+    } else if (deviceFingerprint) {
+      try {
+        console.log('Processing device fingerprint for user:', user._id);
+        console.log('Fingerprint data received:', Object.keys(deviceFingerprint));
+        console.log('Sample fingerprint data:', {
+          userAgent: deviceFingerprint.userAgent?.substring(0, 50) + '...',
+          platform: deviceFingerprint.platform,
+          timezone: deviceFingerprint.timezone
+        });
+        
+        securityAnalysis = await processDeviceFingerprint(user._id, deviceFingerprint, req);
+        console.log('Security analysis result:', securityAnalysis);
+      } catch (fpError) {
+        console.error('Fingerprint processing error:', fpError);
+        console.error('Error stack:', fpError.stack);
+        
+        // If the error is about session limits or device sharing, block the login
+        if (fpError.message.includes('already logged in') || 
+            fpError.message.includes('already registered to another account')) {
+          return res.status(403).json({
+            success: false,
+            message: fpError.message
+          });
+        }
+        
+        // For other fingerprinting errors, continue with login
+        console.log('Non-blocking fingerprint error, continuing with login...');
+      }
+    } else {
+      console.log('No device fingerprint provided in login request');
+      console.log('Full request body:', JSON.stringify(req.body, null, 2));
+    }
+
+    // Send token response with security analysis
+    sendTokenResponse(user, 200, res, securityAnalysis);
   } catch (err) {
     res.status(400).json({
       success: false,
@@ -189,9 +251,216 @@ exports.updatePassword = async (req, res) => {
 };
 
 /**
+ * Process device fingerprint for security analysis
+ */
+const processDeviceFingerprint = async (userId, fingerprintData, req) => {
+  try {
+    console.log('=== PROCESSING DEVICE FINGERPRINT ===');
+    console.log('User ID:', userId);
+    console.log('User ID type:', typeof userId);
+    console.log('Fingerprint data keys:', Object.keys(fingerprintData));
+    
+    // Generate fingerprint hash
+    console.log('Generating fingerprint hash...');
+    const fingerprintHash = generateFingerprintHash(fingerprintData);
+    console.log('Generated hash:', fingerprintHash);
+    
+    // Get client IP and user agent
+    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    console.log('IP Address:', ipAddress);
+    console.log('User Agent:', userAgent.substring(0, 50) + '...');
+    
+    // Check if this device fingerprint exists for ANY user (device sharing prevention)
+    console.log('Checking for device sharing...');
+    const existingDeviceForOtherUser = await DeviceFingerprint.findOne({ 
+      fingerprintHash,
+      userId: { $ne: userId }
+    });
+    
+    if (existingDeviceForOtherUser) {
+      console.log(`Device sharing detected! Device already registered to user: ${existingDeviceForOtherUser.userId}`);
+      throw new Error('This device is already registered to another account. Device sharing is not allowed.');
+    }
+    
+    // Check if this device fingerprint already exists for this user
+    console.log('Checking for existing device for this user...');
+    let deviceFingerprint = await DeviceFingerprint.findByUserAndHash(userId, fingerprintHash);
+    console.log('Existing device found for this user:', !!deviceFingerprint);
+    
+    if (deviceFingerprint) {
+      // Update existing device
+      console.log('Updating existing device...');
+      await deviceFingerprint.updateLastSeen();
+      console.log('Device updated successfully');
+    } else {
+      // Create new device fingerprint
+      console.log('Creating new device fingerprint...');
+      const securityFlags = analyzeSecurityFlags(fingerprintData);
+      console.log('Security flags:', securityFlags);
+      
+      const deviceData = {
+        userId,
+        fingerprintHash,
+        fingerprintData,
+        ipAddress,
+        userAgent,
+        securityFlags,
+        location: {
+          timezone: fingerprintData.timezone
+        }
+      };
+      console.log('Device data to create:', {
+        userId: deviceData.userId,
+        fingerprintHash: deviceData.fingerprintHash,
+        ipAddress: deviceData.ipAddress,
+        securityFlags: deviceData.securityFlags,
+        timezone: deviceData.location.timezone
+      });
+      
+      deviceFingerprint = await DeviceFingerprint.create(deviceData);
+      console.log('New device created with ID:', deviceFingerprint._id);
+    }
+    
+    // Perform security analysis
+    const suspiciousActivity = await DeviceFingerprint.detectSuspiciousActivity(userId);
+    const activeSessionsCount = await DeviceFingerprint.getActiveSessionsCount(userId);
+    
+    // Check for concurrent session limits
+    const MAX_CONCURRENT_SESSIONS = 1;
+    
+    // Count active sessions EXCLUDING the current device (before it becomes active)
+    const otherActiveSessionsCount = await DeviceFingerprint.countDocuments({
+      userId,
+      isActive: true,
+      _id: { $ne: deviceFingerprint._id }
+    });
+    
+    console.log(`Other active sessions: ${otherActiveSessionsCount}, Max allowed: ${MAX_CONCURRENT_SESSIONS}`);
+    
+    // If this is a new device and there are other active sessions, block the login
+    if (deviceFingerprint.loginCount === 1 && otherActiveSessionsCount >= MAX_CONCURRENT_SESSIONS) {
+      console.log(`Login blocked: Session limit exceeded. New device login attempt blocked.`);
+      
+      // Deactivate the new device since we're blocking this login
+      deviceFingerprint.isActive = false;
+      await deviceFingerprint.save();
+      
+      // Return error to block the login
+      throw new Error('Account is already logged in on another device. Please log out from the other device first.');
+    }
+    
+    // For existing devices, just activate them (they can always log back in)
+    if (deviceFingerprint.loginCount > 1) {
+      console.log('Existing device logging back in - allowing login');
+      deviceFingerprint.isActive = true;
+      await deviceFingerprint.save();
+    }
+    
+    const sessionLimitExceeded = activeSessionsCount > MAX_CONCURRENT_SESSIONS;
+    
+    return {
+      deviceId: deviceFingerprint._id,
+      isNewDevice: deviceFingerprint.loginCount === 1,
+      riskScore: deviceFingerprint.riskScore,
+      securityFlags: deviceFingerprint.securityFlags,
+      suspiciousActivity,
+      activeSessionsCount,
+      sessionLimitExceeded,
+      warnings: generateSecurityWarnings(deviceFingerprint, suspiciousActivity, sessionLimitExceeded)
+    };
+  } catch (error) {
+    console.error('Error processing device fingerprint:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate hash from fingerprint data
+ */
+const generateFingerprintHash = (fingerprintData) => {
+  const relevantData = {
+    userAgent: fingerprintData.userAgent,
+    screenResolution: fingerprintData.screenResolution,
+    timezone: fingerprintData.timezone,
+    language: fingerprintData.language,
+    platform: fingerprintData.platform,
+    canvasFingerprint: fingerprintData.canvasFingerprint,
+    webglVendor: fingerprintData.webglVendor,
+    webglRenderer: fingerprintData.webglRenderer,
+    availableFonts: fingerprintData.availableFonts
+  };
+  
+  const dataString = JSON.stringify(relevantData);
+  return crypto.createHash('sha256').update(dataString).digest('hex');
+};
+
+/**
+ * Analyze security flags from fingerprint data
+ */
+const analyzeSecurityFlags = (fingerprintData) => {
+  const flags = [];
+  
+  if (fingerprintData.userAgent && fingerprintData.userAgent.includes('HeadlessChrome')) {
+    flags.push('headless_browser');
+  }
+  
+  if (fingerprintData.webglVendor === 'unknown' || fingerprintData.webglRenderer === 'unknown') {
+    flags.push('webgl_blocked');
+  }
+  
+  if (fingerprintData.pluginCount === 0) {
+    flags.push('no_plugins');
+  }
+  
+  if (fingerprintData.availableFonts && fingerprintData.availableFonts.split(',').length < 5) {
+    flags.push('limited_fonts');
+  }
+  
+  if (fingerprintData.doNotTrack === '1') {
+    flags.push('privacy_focused');
+  }
+  
+  return flags;
+};
+
+/**
+ * Generate security warnings based on analysis
+ */
+const generateSecurityWarnings = (deviceFingerprint, suspiciousActivity, sessionLimitExceeded) => {
+  const warnings = [];
+  
+  if (deviceFingerprint.riskScore > 0.7) {
+    warnings.push('High-risk device detected');
+  }
+  
+  if (deviceFingerprint.loginCount === 1) {
+    warnings.push('Login from new device');
+  }
+  
+  if (suspiciousActivity.overallRiskScore > 0.5) {
+    warnings.push('Suspicious account activity detected');
+  }
+  
+  if (sessionLimitExceeded) {
+    warnings.push('Maximum concurrent sessions exceeded');
+  }
+  
+  if (suspiciousActivity.flags.includes('too_many_devices')) {
+    warnings.push('Too many devices registered');
+  }
+  
+  if (suspiciousActivity.flags.includes('geographically_distributed')) {
+    warnings.push('Logins from multiple locations');
+  }
+  
+  return warnings;
+};
+
+/**
  * Get token from model, create cookie and send response
  */
-const sendTokenResponse = (user, statusCode, res) => {
+const sendTokenResponse = (user, statusCode, res, securityAnalysis = null) => {
   // Create token
   const token = user.getSignedJwtToken();
 
@@ -206,15 +475,32 @@ const sendTokenResponse = (user, statusCode, res) => {
     options.secure = true;
   }
 
-  res.status(statusCode).json({
+  const response = {
     success: true,
     token,
     user: {
       id: user._id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
+      department: user.department,
+      isActive: user.isActive,
       role: user.role,
       branch: user.branch
     }
-  });
+  };
+
+  // Add security analysis if available
+  if (securityAnalysis) {
+    response.security = {
+      deviceId: securityAnalysis.deviceId,
+      isNewDevice: securityAnalysis.isNewDevice,
+      riskScore: securityAnalysis.riskScore,
+      warnings: securityAnalysis.warnings,
+      activeSessionsCount: securityAnalysis.activeSessionsCount,
+      sessionLimitExceeded: securityAnalysis.sessionLimitExceeded
+    };
+  }
+
+  res.status(statusCode).json(response);
 };
