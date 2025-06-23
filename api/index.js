@@ -2,19 +2,8 @@
 const connectDB = require('../config/database');
 const app = require('../server');
 
-module.exports = async (req, res) => {
-  try {
-    // Connect to database before handling request
-    await connectDB();
-    
-    // Handle the request with Express app
-    return app(req, res);
-  } catch (error) {
-    console.error('Serverless function error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database connection failed',
-      error: error.message
-    });
-  }
-};
+// Connect to database once when the function starts
+connectDB().catch(console.error);
+
+// Export the Express app directly
+module.exports = app;
