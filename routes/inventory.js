@@ -7,7 +7,8 @@ const {
   updateInventoryItem,
   deleteInventoryItem,
   searchInventory,
-  importExcel
+  importExcel,
+  importExcelBatch
 } = require('../controllers/inventory');
 
 const router = express.Router();
@@ -41,8 +42,9 @@ router.route('/')
   .post(createInventoryItem);
 
 // Define special routes first
-router.get('/search-items', searchInventory);
+router.get('/search', searchInventory);
 router.post('/import-excel', upload.single('file'), importExcel);
+router.post('/import-excel-batch', upload.single('file'), importExcelBatch);
 
 // Define parameterized routes last
 

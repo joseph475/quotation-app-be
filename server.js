@@ -20,8 +20,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// MongoDB connection is handled by the serverless function wrapper
-// No automatic connection here to avoid conflicts in serverless environment
+// Connect to MongoDB for local development
+const connectDB = require('./config/database');
+
+// Connect to database if running locally
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  connectDB().catch(console.error);
+}
 
 // Routes
 app.use('/api/v1/auth', require('./routes/auth'));

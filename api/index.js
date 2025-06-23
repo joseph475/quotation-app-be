@@ -1,20 +1,26 @@
-// Vercel serverless function entry point
 const connectDB = require('../config/database');
 const app = require('../server');
 
-module.exports = async (req, res) => {
+// Initialize database connection
+let dbConnected = false;
+
+const handler = async (req, res) => {
   try {
-    // Ensure database is connected before handling request
-    await connectDB();
+    // Connect to database if not already connected
+    if (!dbConnected) {
+      await connectDB();
+      dbConnected = true;
+    }
     
-    // Handle the request with Express app
-    app(req, res);
+    return app(req, res);
   } catch (error) {
-    console.error('Serverless function error:', error);
-    res.status(500).json({
+    console.error('Handler error:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Database connection failed',
-      error: error.message
+      message: 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
     });
   }
 };
+
+module.exports = handler;
