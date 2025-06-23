@@ -246,7 +246,7 @@ exports.deleteInventoryItem = async (req, res) => {
 };
 
 /**
- * @desc    Import inventory items from Excel file with progress updates
+ * @desc    Import inventory items from Excel file with chunked processing for Vercel
  * @route   POST /api/v1/inventory/import-excel-batch
  * @access  Private/Superadmin
  */
@@ -260,221 +260,175 @@ exports.importExcelBatch = async (req, res) => {
       });
     }
 
-    // Check if file was uploaded
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please upload an Excel file'
-      });
-    }
+    const { chunk, chunkIndex, totalChunks, sessionId } = req.body;
 
-    // Set up Server-Sent Events for progress updates
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control'
-    });
+    // If this is the initial file upload (no chunkIndex), we expect the Excel file
+    if (chunkIndex === undefined && !chunk) {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please upload an Excel file'
+        });
+      }
 
-    const sendProgress = (data) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
-    try {
-      // Parse Excel file
-      sendProgress({ type: 'info', message: 'Parsing Excel file...' });
-      
+      // Parse Excel file and store in temporary storage (you might want to use Redis or database)
       const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      
-      // Convert to JSON
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
       if (!jsonData || jsonData.length === 0) {
-        sendProgress({ type: 'error', message: 'Excel file is empty or invalid' });
-        res.end();
-        return;
+        return res.status(400).json({
+          success: false,
+          message: 'Excel file is empty or invalid'
+        });
       }
 
-      sendProgress({ 
-        type: 'info', 
-        message: `Found ${jsonData.length} rows to process`,
-        totalRows: jsonData.length 
-      });
+      // Store the parsed data temporarily (in a real app, use Redis or database)
+      // For now, we'll return the data to be processed by frontend in chunks
+      const CHUNK_SIZE = 300; // Optimized chunk size for maximum performance while staying safe
+      const chunks = [];
+      
+      for (let i = 0; i < jsonData.length; i += CHUNK_SIZE) {
+        chunks.push(jsonData.slice(i, i + CHUNK_SIZE));
+      }
 
+      return res.status(200).json({
+        success: true,
+        message: `Excel file parsed successfully. ${jsonData.length} rows found.`,
+        data: {
+          totalRows: jsonData.length,
+          totalChunks: chunks.length,
+          chunkSize: CHUNK_SIZE,
+          sessionId: Date.now().toString(), // Simple session ID
+          chunks: chunks // Return all chunks for frontend processing
+        }
+      });
+    }
+
+    // Process a specific chunk
+    if (chunk && Array.isArray(chunk)) {
       let imported = 0;
       let updated = 0;
       let created = 0;
       let errors = [];
 
-      // Count existing items before import
-      const existingItemsCount = await Inventory.countDocuments();
-      sendProgress({ 
-        type: 'info', 
-        message: `Starting import: ${existingItemsCount} items currently in database` 
-      });
+      // Process chunk items
+      const chunkPromises = chunk.map(async (row, index) => {
+        try {
+          // Map Excel columns to inventory fields
+          const inventoryItem = {
+            itemcode: row.itemcode || row.ItemCode || row['Item Code'] || row['ITEM CODE'] || 
+                     row.item_code || row.code || row.Code || row.ID || row.id,
+            name: row.name || row.Name || row['Item Name'] || row['ITEM NAME'] || 
+                  row.item_name || row.description || row.Description || row.DESCRIPTION ||
+                  row.product || row.Product || row.PRODUCT,
+            barcode: row.barcode || row.Barcode || row['Bar Code'] || row['BAR CODE'] || 
+                    row.bar_code || row.ean || row.EAN || row.upc || row.UPC,
+            unit: row.unit || row.Unit || row.UNIT || row.uom || row.UOM || 'pcs',
+            cost: parseFloat(row.cost || row.Cost || row.COST || row.purchase_price || 
+                           row['Purchase Price'] || row.buy_price || 0),
+            price: parseFloat(row.price || row.Price || row.PRICE || row.sell_price || 
+                            row['Sell Price'] || row.selling_price || 0)
+          };
 
-      // Process data in batches
-      const BATCH_SIZE = 100;
-      const totalRows = jsonData.length;
-      const totalBatches = Math.ceil(totalRows / BATCH_SIZE);
-      
-      for (let batchStart = 0; batchStart < totalRows; batchStart += BATCH_SIZE) {
-        const batchEnd = Math.min(batchStart + BATCH_SIZE, totalRows);
-        const batch = jsonData.slice(batchStart, batchEnd);
-        const currentBatch = Math.floor(batchStart / BATCH_SIZE) + 1;
-        
-        sendProgress({
-          type: 'progress',
-          message: `Processing batch ${currentBatch} of ${totalBatches} (rows ${batchStart + 1} to ${batchEnd})`,
-          currentBatch,
-          totalBatches,
-          processed: batchStart,
-          total: totalRows,
-          percentage: Math.round((batchStart / totalRows) * 100)
-        });
-        
-        // Process batch items
-        const batchPromises = batch.map(async (row, index) => {
-          const rowIndex = batchStart + index;
+          // Validate required fields
+          if (!inventoryItem.name || inventoryItem.name.toString().trim() === '') {
+            return { error: `Row ${(chunkIndex * 300) + index + 1}: Name is required` };
+          }
+
+          // Clean up the data
+          inventoryItem.name = inventoryItem.name.toString().trim();
           
-          try {
-            // Map Excel columns to inventory fields
-            const inventoryItem = {
-              itemcode: row.itemcode || row.ItemCode || row['Item Code'] || row['ITEM CODE'] || 
-                       row.item_code || row.code || row.Code || row.ID || row.id,
-              name: row.name || row.Name || row['Item Name'] || row['ITEM NAME'] || 
-                    row.item_name || row.description || row.Description || row.DESCRIPTION ||
-                    row.product || row.Product || row.PRODUCT,
-              barcode: row.barcode || row.Barcode || row['Bar Code'] || row['BAR CODE'] || 
-                      row.bar_code || row.ean || row.EAN || row.upc || row.UPC,
-              unit: row.unit || row.Unit || row.UNIT || row.uom || row.UOM || 'pcs',
-              cost: parseFloat(row.cost || row.Cost || row.COST || row.purchase_price || 
-                             row['Purchase Price'] || row.buy_price || 0),
-              price: parseFloat(row.price || row.Price || row.PRICE || row.sell_price || 
-                              row['Sell Price'] || row.selling_price || 0)
-            };
-
-            // Validate required fields
-            if (!inventoryItem.name || inventoryItem.name.toString().trim() === '') {
-              return { error: `Row ${rowIndex + 1}: Name is required` };
-            }
-
-            // Clean up the data
-            inventoryItem.name = inventoryItem.name.toString().trim();
-            
-            // Handle itemcode
-            if (inventoryItem.itemcode && inventoryItem.itemcode.toString().trim() !== '') {
-              const itemcodeNum = parseInt(inventoryItem.itemcode.toString().trim());
-              if (!isNaN(itemcodeNum)) {
-                inventoryItem.itemcode = itemcodeNum;
-              } else {
-                delete inventoryItem.itemcode;
-              }
+          // Handle itemcode
+          if (inventoryItem.itemcode && inventoryItem.itemcode.toString().trim() !== '') {
+            const itemcodeNum = parseInt(inventoryItem.itemcode.toString().trim());
+            if (!isNaN(itemcodeNum)) {
+              inventoryItem.itemcode = itemcodeNum;
             } else {
               delete inventoryItem.itemcode;
             }
-            
-            if (inventoryItem.barcode) {
-              inventoryItem.barcode = inventoryItem.barcode.toString().trim();
-            }
-
-            // Check if item already exists
-            let existingItem = null;
-            
-            if (inventoryItem.itemcode) {
-              existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
-            }
-            
-            if (!existingItem && inventoryItem.barcode) {
-              existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
-            }
-
-            if (existingItem) {
-              // Update existing item
-              const updateData = {
-                name: inventoryItem.name,
-                barcode: inventoryItem.barcode,
-                unit: inventoryItem.unit,
-                cost: inventoryItem.cost,
-                price: inventoryItem.price,
-                itemcode: existingItem.itemcode
-              };
-              
-              await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
-                new: true,
-                runValidators: true
-              });
-              
-              return { type: 'updated', name: inventoryItem.name };
-            } else {
-              // Create new item
-              await Inventory.create(inventoryItem);
-              return { type: 'created', name: inventoryItem.name };
-            }
-          } catch (error) {
-            return { error: `Row ${rowIndex + 1}: ${error.message}` };
+          } else {
+            delete inventoryItem.itemcode;
           }
-        });
-        
-        // Wait for batch to complete
-        const batchResults = await Promise.all(batchPromises);
-        
-        // Process results
-        batchResults.forEach(result => {
-          if (result.error) {
-            errors.push(result.error);
-          } else if (result.type === 'updated') {
-            updated++;
-            imported++;
-          } else if (result.type === 'created') {
-            created++;
-            imported++;
+          
+          if (inventoryItem.barcode) {
+            inventoryItem.barcode = inventoryItem.barcode.toString().trim();
           }
-        });
-        
-        // Send batch completion update
-        sendProgress({
-          type: 'batch_complete',
-          message: `Batch ${currentBatch} completed: ${created} created, ${updated} updated, ${errors.length} errors`,
-          currentBatch,
-          totalBatches,
-          processed: batchEnd,
-          total: totalRows,
-          percentage: Math.round((batchEnd / totalRows) * 100),
-          created,
-          updated,
-          errors: errors.length
-        });
-      }
 
-      // Final results
-      const finalItemsCount = await Inventory.countDocuments();
+          // Check if item already exists
+          let existingItem = null;
+          
+          if (inventoryItem.itemcode) {
+            existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
+          }
+          
+          if (!existingItem && inventoryItem.barcode) {
+            existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
+          }
+
+          if (existingItem) {
+            // Update existing item
+            const updateData = {
+              name: inventoryItem.name,
+              barcode: inventoryItem.barcode,
+              unit: inventoryItem.unit,
+              cost: inventoryItem.cost,
+              price: inventoryItem.price,
+              itemcode: existingItem.itemcode
+            };
+            
+            await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
+              new: true,
+              runValidators: true
+            });
+            
+            return { type: 'updated', name: inventoryItem.name };
+          } else {
+            // Create new item
+            await Inventory.create(inventoryItem);
+            return { type: 'created', name: inventoryItem.name };
+          }
+        } catch (error) {
+          return { error: `Row ${(chunkIndex * 50) + index + 1}: ${error.message}` };
+        }
+      });
       
-      sendProgress({
-        type: 'complete',
-        message: `Import completed successfully! ${created} created, ${updated} updated, ${errors.length} errors`,
-        data: {
-          imported,
-          created,
-          updated,
-          beforeCount: existingItemsCount,
-          afterCount: finalItemsCount,
-          errors: errors.length > 0 ? errors.slice(0, 10) : [], // Limit errors shown
-          totalRows: jsonData.length
+      // Wait for chunk to complete
+      const chunkResults = await Promise.all(chunkPromises);
+      
+      // Process results
+      chunkResults.forEach(result => {
+        if (result.error) {
+          errors.push(result.error);
+        } else if (result.type === 'updated') {
+          updated++;
+          imported++;
+        } else if (result.type === 'created') {
+          created++;
+          imported++;
         }
       });
 
-    } catch (error) {
-      sendProgress({ 
-        type: 'error', 
-        message: error.message || 'Failed to import Excel file' 
+      return res.status(200).json({
+        success: true,
+        message: `Chunk ${chunkIndex + 1} of ${totalChunks} processed successfully`,
+        data: {
+          chunkIndex,
+          totalChunks,
+          processed: chunk.length,
+          created,
+          updated,
+          errors: errors.length,
+          errorDetails: errors.slice(0, 5) // Limit errors shown per chunk
+        }
       });
     }
 
-    res.end();
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid request format'
+    });
 
   } catch (err) {
     console.error('Excel import error:', err);
