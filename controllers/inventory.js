@@ -295,95 +295,100 @@ exports.importExcel = async (req, res) => {
     const existingItemIds = existingItems.map(item => item._id.toString());
     console.log('Protected item IDs (these must NOT be deleted):', existingItemIds);
 
-    // Process each row with enhanced safety
-    for (let i = 0; i < jsonData.length; i++) {
-      const row = jsonData[i];
+    // Process data in batches to prevent timeouts
+    const BATCH_SIZE = 50; // Process 50 items at a time
+    const totalRows = jsonData.length;
+    
+    console.log(`Processing ${totalRows} rows in batches of ${BATCH_SIZE}`);
+    
+    for (let batchStart = 0; batchStart < totalRows; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, totalRows);
+      const batch = jsonData.slice(batchStart, batchEnd);
       
-      try {
-        // Map Excel columns to inventory fields
-        // Expected columns: itemcode, name, barcode, unit, cost, price
-        const inventoryItem = {
-          itemcode: row.itemcode || row.ItemCode || row['Item Code'],
-          name: row.name || row.Name || row['Item Name'],
-          barcode: row.barcode || row.Barcode || row['Bar Code'],
-          unit: row.unit || row.Unit || 'pcs',
-          cost: parseFloat(row.cost || row.Cost || 0),
-          price: parseFloat(row.price || row.Price || 0)
-        };
-
-        // Validate required fields
-        if (!inventoryItem.name) {
-          errors.push(`Row ${i + 1}: Name is required`);
-          continue;
-        }
-
-        if (!inventoryItem.itemcode) {
-          errors.push(`Row ${i + 1}: Item code is required`);
-          continue;
-        }
-
-        console.log(`Processing row ${i + 1}: itemcode=${inventoryItem.itemcode}, barcode=${inventoryItem.barcode}, name=${inventoryItem.name}`);
-
-        // Check if item already exists (more robust checking)
-        let existingItem = null;
+      console.log(`Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}: rows ${batchStart + 1} to ${batchEnd}`);
+      
+      // Process batch items in parallel for better performance
+      const batchPromises = batch.map(async (row, index) => {
+        const rowIndex = batchStart + index;
         
-        // First check by itemcode if it exists
-        if (inventoryItem.itemcode) {
-          existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
-          if (existingItem) {
-            console.log(`Found existing item by itemcode: ${existingItem.name} (ID: ${existingItem._id})`);
-          }
-        }
-        
-        // If not found by itemcode and barcode exists, check by barcode
-        if (!existingItem && inventoryItem.barcode) {
-          existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
-          if (existingItem) {
-            console.log(`Found existing item by barcode: ${existingItem.name} (ID: ${existingItem._id})`);
-          }
-        }
+        try {
+          // Map Excel columns to inventory fields
+          const inventoryItem = {
+            itemcode: row.itemcode || row.ItemCode || row['Item Code'],
+            name: row.name || row.Name || row['Item Name'],
+            barcode: row.barcode || row.Barcode || row['Bar Code'],
+            unit: row.unit || row.Unit || 'pcs',
+            cost: parseFloat(row.cost || row.Cost || 0),
+            price: parseFloat(row.price || row.Price || 0)
+          };
 
-        if (existingItem) {
-          // SAFETY CHECK: Ensure we're not accidentally affecting other items
-          try {
-            // Update existing item - only preserve itemcode
+          // Validate required fields
+          if (!inventoryItem.name) {
+            return { error: `Row ${rowIndex + 1}: Name is required` };
+          }
+
+          if (!inventoryItem.itemcode) {
+            return { error: `Row ${rowIndex + 1}: Item code is required` };
+          }
+
+          // Check if item already exists
+          let existingItem = null;
+          
+          // First check by itemcode
+          if (inventoryItem.itemcode) {
+            existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
+          }
+          
+          // If not found by itemcode and barcode exists, check by barcode
+          if (!existingItem && inventoryItem.barcode) {
+            existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
+          }
+
+          if (existingItem) {
+            // Update existing item
             const updateData = {
               name: inventoryItem.name,
               barcode: inventoryItem.barcode,
               unit: inventoryItem.unit,
               cost: inventoryItem.cost,
               price: inventoryItem.price,
-              itemcode: existingItem.itemcode // Preserve original itemcode only
+              itemcode: existingItem.itemcode // Preserve original itemcode
             };
             
-            const updatedItem = await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
+            await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
               new: true,
               runValidators: true
             });
             
-            console.log(`Successfully updated item: ${updatedItem.name} (ID: ${updatedItem._id})`);
-            updated++;
-          } catch (updateError) {
-            console.error(`Error updating item ${existingItem._id}:`, updateError);
-            errors.push(`Row ${i + 1}: Failed to update existing item - ${updateError.message}`);
+            return { type: 'updated', name: inventoryItem.name };
+          } else {
+            // Create new item
+            await Inventory.create(inventoryItem);
+            return { type: 'created', name: inventoryItem.name };
           }
-        } else {
-          // Create new item only if it doesn't exist
-          try {
-            const newItem = await Inventory.create(inventoryItem);
-            console.log(`Successfully created new item: ${newItem.name} (ID: ${newItem._id})`);
-            created++;
-          } catch (createError) {
-            console.error(`Error creating new item:`, createError);
-            errors.push(`Row ${i + 1}: Failed to create new item - ${createError.message}`);
-          }
+        } catch (error) {
+          return { error: `Row ${rowIndex + 1}: ${error.message}` };
         }
-
-        imported++;
-      } catch (error) {
-        console.error(`Error processing row ${i + 1}:`, error);
-        errors.push(`Row ${i + 1}: ${error.message}`);
-      }
+      });
+      
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Process results
+      batchResults.forEach(result => {
+        if (result.error) {
+          errors.push(result.error);
+        } else if (result.type === 'updated') {
+          updated++;
+          imported++;
+        } else if (result.type === 'created') {
+          created++;
+          imported++;
+        }
+      });
+      
+      // Log progress
+      console.log(`Batch completed: ${imported}/${totalRows} processed, ${created} created, ${updated} updated, ${errors.length} errors`);
     }
 
     // CRITICAL SAFETY VERIFICATION: Check if any existing items were accidentally deleted
