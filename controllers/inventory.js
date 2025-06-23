@@ -20,27 +20,17 @@ exports.searchInventory = async (req, res) => {
     const searchFilter = {
       $or: [
         { name: { $regex: query, $options: 'i' } },
-        { itemCode: { $regex: query, $options: 'i' } },
-        { brand: { $regex: query, $options: 'i' } },
-        { model: { $regex: query, $options: 'i' } },
-        { color: { $regex: query, $options: 'i' } }
+        { barcode: { $regex: query, $options: 'i' } },
+        { itemcode: parseInt(query) || 0 }
       ]
     };
     
     const inventory = await Inventory.find(searchFilter);
     
-    // Ensure discount and unit are properly set for all items
-    const inventoryData = inventory.map(item => {
-      const itemObj = item.toObject();
-      itemObj.discount = itemObj.discount !== undefined ? itemObj.discount : 0;
-      itemObj.unit = itemObj.unit || 'pcs';
-      return itemObj;
-    });
-    
     res.status(200).json({
       success: true,
-      count: inventoryData.length,
-      data: inventoryData
+      count: inventory.length,
+      data: inventory
     });
   } catch (err) {
     res.status(400).json({
@@ -101,14 +91,6 @@ exports.getInventory = async (req, res) => {
     // Executing query
     const inventory = await query;
 
-    // Ensure discount and unit are properly set for all items
-    const inventoryData = inventory.map(item => {
-      const itemObj = item.toObject();
-      itemObj.discount = itemObj.discount !== undefined ? itemObj.discount : 0;
-      itemObj.unit = itemObj.unit || 'pcs';
-      return itemObj;
-    });
-
     // Pagination result
     const pagination = {};
 
@@ -128,9 +110,9 @@ exports.getInventory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: inventoryData.length,
+      count: inventory.length,
       pagination,
-      data: inventoryData
+      data: inventory
     });
   } catch (err) {
     res.status(400).json({
@@ -156,34 +138,9 @@ exports.getInventoryItem = async (req, res) => {
       });
     }
 
-    // Ensure discount and unit are properly set in the response
-    const itemData = item.toObject();
-    itemData.discount = itemData.discount !== undefined ? itemData.discount : 0;
-    itemData.unit = itemData.unit || 'pcs';
-
-    // Check if the request includes a query parameter to include supplier prices
-    if (req.query.includeSupplierPrices === 'true') {
-      // Import the SupplierPrice model
-      const SupplierPrice = require('../models/SupplierPrice');
-      
-      // Get supplier prices for this inventory item
-      const supplierPrices = await SupplierPrice.find({ inventory: req.params.id })
-        .populate({
-          path: 'supplier',
-          select: 'name contactPerson'
-        });
-      
-      // Add supplier prices to the response
-      return res.status(200).json({
-        success: true,
-        data: itemData,
-        supplierPrices: supplierPrices
-      });
-    }
-
     res.status(200).json({
       success: true,
-      data: itemData
+      data: item
     });
   } catch (err) {
     res.status(400).json({
@@ -200,14 +157,7 @@ exports.getInventoryItem = async (req, res) => {
  */
 exports.createInventoryItem = async (req, res) => {
   try {
-    // Ensure discount and unit are properly set
-    const itemData = {
-      ...req.body,
-      discount: req.body.discount || 0,
-      unit: req.body.unit || 'pcs'
-    };
-    
-    const item = await Inventory.create(itemData);
+    const item = await Inventory.create(req.body);
 
     res.status(201).json({
       success: true,
@@ -228,14 +178,7 @@ exports.createInventoryItem = async (req, res) => {
  */
 exports.updateInventoryItem = async (req, res) => {
   try {
-    // Ensure discount and unit are properly set
-    const itemData = {
-      ...req.body,
-      discount: req.body.discount !== undefined ? req.body.discount : 0,
-      unit: req.body.unit || 'pcs'
-    };
-    
-    const item = await Inventory.findByIdAndUpdate(req.params.id, itemData, {
+    const item = await Inventory.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
     });

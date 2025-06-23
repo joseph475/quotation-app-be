@@ -1,11 +1,16 @@
 const mongoose = require('mongoose');
 
 const InventorySchema = new mongoose.Schema({
-  itemCode: {
+  itemcode: {
+    type: Number,
+    required: true,
+    unique: true
+  },
+  barcode: {
     type: String,
-    required: [true, 'Please add an item code'],
-    trim: true,
-    maxlength: [20, 'Item code cannot be more than 20 characters']
+    required: [true, 'Please add a barcode'],
+    unique: true,
+    trim: true
   },
   name: {
     type: String,
@@ -13,60 +18,18 @@ const InventorySchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Name cannot be more than 100 characters']
   },
-  brand: {
-    type: String,
-    trim: true,
-    maxlength: [50, 'Brand cannot be more than 50 characters']
-  },
-  model: {
-    type: String,
-    trim: true,
-    maxlength: [50, 'Model cannot be more than 50 characters']
-  },
-  color: {
-    type: String,
-    trim: true,
-    maxlength: [30, 'Color cannot be more than 30 characters']
-  },
-  description: {
-    type: String,
-    trim: true,
-    maxlength: [500, 'Description cannot be more than 500 characters']
-  },
-  category: {
-    type: String,
-    required: [true, 'Please add a category'],
-    trim: true
-  },
   unit: {
     type: String,
     required: [true, 'Please add a unit'],
     trim: true
   },
-  costPrice: {
+  cost: {
     type: Number,
-    required: [true, 'Please add a cost price']
+    required: [true, 'Please add a cost']
   },
-  sellingPrice: {
+  price: {
     type: Number,
-    required: [true, 'Please add a selling price']
-  },
-  discount: {
-    type: Number,
-    default: 0
-  },
-  quantity: {
-    type: Number,
-    required: [true, 'Please add a quantity'],
-    default: 0
-  },
-  reorderLevel: {
-    type: Number,
-    default: 10
-  },
-  supplier: {
-    type: mongoose.Schema.ObjectId,
-    ref: 'Supplier'
+    required: [true, 'Please add a price']
   },
   createdAt: {
     type: Date,
@@ -78,11 +41,25 @@ const InventorySchema = new mongoose.Schema({
   }
 });
 
-// Create index for search
-InventorySchema.index({ name: 'text', description: 'text', itemCode: 'text', brand: 'text', model: 'text', color: 'text' });
+// Auto-increment itemcode
+InventorySchema.pre('save', async function(next) {
+  if (this.isNew) {
+    try {
+      const lastItem = await this.constructor.findOne({}, {}, { sort: { 'itemcode': -1 } });
+      this.itemcode = lastItem ? lastItem.itemcode + 1 : 1;
+    } catch (error) {
+      return next(error);
+    }
+  }
+  this.updatedAt = Date.now();
+  next();
+});
 
-// Create unique index for itemCode
-InventorySchema.index({ itemCode: 1 }, { unique: true });
+// Create index for search
+InventorySchema.index({ name: 'text', barcode: 'text' });
+
+// Create unique index for barcode
+InventorySchema.index({ barcode: 1 }, { unique: true });
 
 // Update the updatedAt field on save
 InventorySchema.pre('save', function(next) {
