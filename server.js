@@ -20,13 +20,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quotation-app', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// MongoDB connection is handled by the serverless function wrapper
+// No automatic connection here to avoid conflicts in serverless environment
 
 // Routes
 app.use('/api/v1/auth', require('./routes/auth'));
@@ -42,6 +37,7 @@ app.use('/api/v1/supplier-prices', require('./routes/supplierPrices'));
 app.use('/api/v1/purchase-orders', require('./routes/purchaseOrders'));
 app.use('/api/v1/purchase-receiving', require('./routes/purchaseReceiving'));
 app.use('/api/v1/stock-transfers', require('./routes/stockTransfers'));
+app.use('/api/v1/branches', require('./routes/branches'));
 app.use('/api/v1/users', require('./routes/users'));
 app.use('/api/v1/reports', require('./routes/reports'));
 app.use('/api/v1/inventory-history', require('./routes/inventoryHistory'));
