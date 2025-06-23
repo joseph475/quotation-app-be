@@ -278,23 +278,6 @@ exports.importExcel = async (req, res) => {
     let created = 0;
     let errors = [];
 
-    // Count existing items before import for debugging
-    const existingItemsCount = await Inventory.countDocuments();
-    console.log(`Starting import: ${existingItemsCount} existing items in database`);
-    
-    // Log all existing items for debugging
-    const existingItems = await Inventory.find({}, 'itemcode barcode name').lean();
-    console.log('Existing items before import:', existingItems.map(item => ({
-      id: item._id,
-      itemcode: item.itemcode,
-      barcode: item.barcode,
-      name: item.name
-    })));
-
-    // CRITICAL SAFETY CHECK: Store all existing item IDs to ensure none are deleted
-    const existingItemIds = existingItems.map(item => item._id.toString());
-    console.log('Protected item IDs (these must NOT be deleted):', existingItemIds);
-
     // Process data in batches to prevent timeouts
     const BATCH_SIZE = 50; // Process 50 items at a time
     const totalRows = jsonData.length;
@@ -389,18 +372,6 @@ exports.importExcel = async (req, res) => {
       
       // Log progress
       console.log(`Batch completed: ${imported}/${totalRows} processed, ${created} created, ${updated} updated, ${errors.length} errors`);
-    }
-
-    // CRITICAL SAFETY VERIFICATION: Check if any existing items were accidentally deleted
-    const remainingItems = await Inventory.find({}, '_id').lean();
-    const remainingItemIds = remainingItems.map(item => item._id.toString());
-    
-    const deletedItems = existingItemIds.filter(id => !remainingItemIds.includes(id));
-    if (deletedItems.length > 0) {
-      console.error('CRITICAL ERROR: Items were deleted during import!', deletedItems);
-      errors.push(`CRITICAL: ${deletedItems.length} existing items were accidentally deleted during import`);
-    } else {
-      console.log('SAFETY CHECK PASSED: No existing items were deleted during import');
     }
 
     // Count items after import for verification
