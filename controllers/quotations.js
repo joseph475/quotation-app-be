@@ -184,8 +184,11 @@ exports.updateQuotation = async (req, res) => {
       });
     }
 
-    // Make sure user is quotation creator or admin
-    if (quotation.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
+    // Allow user role, admin, and superadmin to update quotations
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+    const isUser = req.user.role === 'user';
+    
+    if (!isAdmin && !isUser) {
       return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to update this quotation`
@@ -225,8 +228,8 @@ exports.deleteQuotation = async (req, res) => {
       });
     }
 
-    // Make sure user is quotation creator or admin
-    if (quotation.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
+    // Make sure user is quotation creator or admin/superadmin
+    if (quotation.createdBy.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'superadmin') {
       return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to delete this quotation`
