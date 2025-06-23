@@ -57,7 +57,7 @@ exports.getUser = async (req, res) => {
  */
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, phone, department, isActive, password, role, branch } = req.body;
+    const { name, email, phone, department, address, isActive, password, role, branch } = req.body;
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -72,8 +72,11 @@ exports.createUser = async (req, res) => {
     // Get environment variable for user role limit
     const maxUserRoleUsers = parseInt(process.env.MAX_USER_ROLE_USERS) || 3;
 
+    // Determine the actual role that will be assigned
+    const actualRole = role || 'user';
+    
     // Check if trying to create a user with role 'user' and if limit is reached
-    if (role === 'user' || !role) { // Default role is 'user'
+    if (actualRole === 'user') {
       const userRoleCount = await User.countDocuments({ role: 'user' });
       
       if (userRoleCount >= maxUserRoleUsers) {
@@ -93,6 +96,7 @@ exports.createUser = async (req, res) => {
       email,
       phone,
       department,
+      address,
       isActive: isActive !== undefined ? isActive : true,
       password,
       role: role || 'user',

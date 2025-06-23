@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const InventorySchema = new mongoose.Schema({
   itemcode: {
     type: Number,
-    required: true,
     unique: true
   },
   barcode: {
@@ -41,9 +40,10 @@ const InventorySchema = new mongoose.Schema({
   }
 });
 
-// Auto-increment itemcode
+// Auto-increment itemcode and update timestamps
 InventorySchema.pre('save', async function(next) {
-  if (this.isNew) {
+  // Auto-increment itemcode for new documents
+  if (this.isNew && !this.itemcode) {
     try {
       const lastItem = await this.constructor.findOne({}, {}, { sort: { 'itemcode': -1 } });
       this.itemcode = lastItem ? lastItem.itemcode + 1 : 1;
@@ -51,6 +51,8 @@ InventorySchema.pre('save', async function(next) {
       return next(error);
     }
   }
+  
+  // Update timestamp
   this.updatedAt = Date.now();
   next();
 });
@@ -60,11 +62,5 @@ InventorySchema.index({ name: 'text', barcode: 'text' });
 
 // Create unique index for barcode
 InventorySchema.index({ barcode: 1 }, { unique: true });
-
-// Update the updatedAt field on save
-InventorySchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
-});
 
 module.exports = mongoose.model('Inventory', InventorySchema);

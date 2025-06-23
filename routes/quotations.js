@@ -7,7 +7,9 @@ const {
   deleteQuotation,
   convertToSale,
   rejectQuotation,
-  approveQuotation
+  approveQuotation,
+  markAsDelivered,
+  getDeliveryUsers
 } = require('../controllers/quotations');
 
 const router = express.Router();
@@ -23,6 +25,9 @@ router.route('/')
   .get(getQuotations)
   .post(createQuotation);
 
+router.route('/delivery-users')
+  .get(getDeliveryUsers);
+
 router.route('/:id')
   .get(getQuotation)
   .put(updateQuotation)
@@ -36,5 +41,8 @@ router.route('/:id/reject')
 
 router.route('/:id/approve')
   .post(approveQuotation);
+
+router.route('/:id/deliver')
+  .post(markAsDelivered);
 
 module.exports = router;

@@ -9,7 +9,7 @@ const QuotationSchema = new mongoose.Schema({
   },
   customer: {
     type: mongoose.Schema.ObjectId,
-    ref: 'Customer',
+    ref: 'User',
     required: [true, 'Please add a customer']
   },
   items: [
@@ -26,7 +26,7 @@ const QuotationSchema = new mongoose.Schema({
       quantity: {
         type: Number,
         required: [true, 'Please add a quantity'],
-        min: [1, 'Quantity must be at least 1']
+        min: [0, 'Quantity must be at least 0']
       },
       unitPrice: {
         type: Number,
@@ -43,12 +43,17 @@ const QuotationSchema = new mongoose.Schema({
       total: {
         type: Number,
         required: [true, 'Please add a total']
+      },
+      notes: {
+        type: String,
+        trim: true,
+        default: ''
       }
     }
   ],
   subtotal: {
     type: Number,
-    required: [true, 'Please add a subtotal']
+    default: 0
   },
   taxAmount: {
     type: Number,
@@ -64,12 +69,16 @@ const QuotationSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected', 'completed', 'draft', 'active', 'accepted'],
+    enum: ['pending', 'approved', 'rejected', 'completed', 'draft', 'active', 'accepted', 'delivered'],
     default: 'pending'
   },
+  assignedDelivery: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    default: null
+  },
   validUntil: {
-    type: Date,
-    required: [true, 'Please add a valid until date']
+    type: Date
   },
   notes: {
     type: String,
@@ -104,10 +113,16 @@ QuotationSchema.pre('save', function(next) {
 QuotationSchema.pre(/^find/, function(next) {
   this.populate({
     path: 'customer',
-    select: 'name contactPerson phone'
+    select: 'name email phone'
   }).populate({
     path: 'items.inventory',
-    select: 'name itemCode'
+    select: 'name itemcode'
+  }).populate({
+    path: 'assignedDelivery',
+    select: 'name email'
+  }).populate({
+    path: 'createdBy',
+    select: 'name email'
   });
 
   next();

@@ -2,6 +2,7 @@ const Sale = require('../models/Sale');
 const Inventory = require('../models/Inventory');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Customer = require('../models/Customer');
+const User = require('../models/User');
 
 /**
  * @desc    Get sales report
@@ -20,27 +21,43 @@ exports.getSalesReport = async (req, res, next) => {
       });
     }
     
-    // Build query
+    console.log('Sales Report - Date range:', { startDate, endDate });
+    
+    // Build query with proper date handling
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    // Set end date to end of day
+    endDateObj.setHours(23, 59, 59, 999);
+    
     const query = {
       createdAt: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: startDateObj,
+        $lte: endDateObj
       }
     };
+    
+    console.log('Sales Report - Query:', query);
     
     // Add branch filter if provided
     if (branch) {
       query.branch = branch;
     }
     
+    // Get all sales first to check if there are any
+    const allSales = await Sale.find({}).limit(5);
+    console.log('Sales Report - Total sales in DB:', await Sale.countDocuments());
+    console.log('Sales Report - Sample sales:', allSales.map(s => ({ id: s._id, date: s.createdAt, total: s.total })));
+    
     // Get sales within date range
     const sales = await Sale.find(query)
       .populate('customer', 'name email')
       .sort({ createdAt: -1 });
     
+    console.log('Sales Report - Filtered sales count:', sales.length);
+    
     // Calculate summary statistics
     const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
     const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
     
     // Group sales by day for chart data
@@ -54,7 +71,7 @@ exports.getSalesReport = async (req, res, next) => {
         };
       }
       salesByDay[date].count += 1;
-      salesByDay[date].revenue += sale.total;
+      salesByDay[date].revenue += (sale.total || 0);
     });
     
     // Convert to array format for frontend
@@ -63,6 +80,13 @@ exports.getSalesReport = async (req, res, next) => {
       count: salesByDay[date].count,
       revenue: salesByDay[date].revenue
     }));
+    
+    console.log('Sales Report - Response data:', {
+      salesCount: sales.length,
+      totalRevenue,
+      averageSale,
+      dailySalesDataCount: dailySalesData.length
+    });
     
     // Return report data
     res.status(200).json({
@@ -76,6 +100,7 @@ exports.getSalesReport = async (req, res, next) => {
       }
     });
   } catch (err) {
+    console.error('Sales Report Error:', err);
     next(err);
   }
 };
@@ -239,24 +264,46 @@ exports.getCustomersReport = async (req, res, next) => {
       });
     }
     
-    // Get all customers
-    const customers = await Customer.find().sort({ createdAt: -1 });
+    console.log('Customer Report - Date range:', { startDate, endDate });
+    
+    // Get all customers (users with role 'user')
+    const customers = await User.find({ 
+      role: 'user',
+      isActive: true 
+    }).sort({ createdAt: -1 });
+    
+    console.log('Customer Report - Total customers found:', customers.length);
+    console.log('Customer Report - Sample customers:', customers.slice(0, 2).map(c => ({ id: c._id, name: c.name, role: c.role })));
+    
+    // Build query with proper date handling
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    // Set end date to end of day
+    endDateObj.setHours(23, 59, 59, 999);
     
     // Get sales within date range
     const sales = await Sale.find({
       createdAt: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: startDateObj,
+        $lte: endDateObj
       }
-    }).populate('customer', 'name email');
+    }).populate('customer', 'name email phone');
+    
+    console.log('Customer Report - Sales found in date range:', sales.length);
+    console.log('Customer Report - Sample sales:', sales.slice(0, 2).map(s => ({ 
+      id: s._id, 
+      date: s.createdAt, 
+      total: s.total, 
+      customer: s.customer ? s.customer.name : 'No customer' 
+    })));
     
     // Calculate summary statistics
     const totalCustomers = customers.length;
     const newCustomers = customers.filter(c => 
-      c.createdAt >= new Date(startDate) && c.createdAt <= new Date(endDate)
+      c.createdAt >= startDateObj && c.createdAt <= endDateObj
     ).length;
     const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
     
     // Group sales by customer
     const salesByCustomer = {};
@@ -272,12 +319,20 @@ exports.getCustomersReport = async (req, res, next) => {
         };
       }
       salesByCustomer[customerId].salesCount += 1;
-      salesByCustomer[customerId].totalSpent += sale.total;
+      salesByCustomer[customerId].totalSpent += (sale.total || 0);
     });
     
     // Convert to array and sort by total spent
     const customerSalesData = Object.values(salesByCustomer)
       .sort((a, b) => b.totalSpent - a.totalSpent);
+    
+    console.log('Customer Report - Response data:', {
+      totalCustomers,
+      newCustomers,
+      totalSales,
+      totalRevenue,
+      customerSalesDataCount: customerSalesData.length
+    });
     
     // Return report data
     res.status(200).json({
@@ -293,6 +348,7 @@ exports.getCustomersReport = async (req, res, next) => {
       }
     });
   } catch (err) {
+    console.error('Customer Report Error:', err);
     next(err);
   }
 };

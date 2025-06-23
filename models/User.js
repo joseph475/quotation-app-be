@@ -28,13 +28,18 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     maxlength: [50, 'Department cannot be more than 50 characters']
   },
+  address: {
+    type: String,
+    trim: true,
+    maxlength: [200, 'Address cannot be more than 200 characters']
+  },
   isActive: {
     type: Boolean,
     default: true
   },
   role: {
     type: String,
-    enum: ['user', 'admin'],
+    enum: ['user', 'admin', 'superadmin', 'delivery'],
     default: 'user'
   },
   password: {

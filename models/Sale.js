@@ -13,7 +13,7 @@ const SaleSchema = new mongoose.Schema({
   },
   customer: {
     type: mongoose.Schema.ObjectId,
-    ref: 'Customer',
+    ref: 'User',
     required: [true, 'Please add a customer']
   },
   items: [
@@ -70,15 +70,6 @@ const SaleSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'paid', 'partially_paid', 'cancelled', 'refunded'],
     default: 'pending'
-  },
-  paymentMethod: {
-    type: String,
-    enum: ['cash', 'check', 'credit_card', 'bank_transfer', 'online_payment'],
-    default: 'cash'
-  },
-  paymentDetails: {
-    type: String,
-    trim: true
   },
   amountPaid: {
     type: Number,

@@ -271,17 +271,8 @@ const processDeviceFingerprint = async (userId, fingerprintData, req) => {
     console.log('IP Address:', ipAddress);
     console.log('User Agent:', userAgent.substring(0, 50) + '...');
     
-    // Check if this device fingerprint exists for ANY user (device sharing prevention)
-    console.log('Checking for device sharing...');
-    const existingDeviceForOtherUser = await DeviceFingerprint.findOne({ 
-      fingerprintHash,
-      userId: { $ne: userId }
-    });
-    
-    if (existingDeviceForOtherUser) {
-      console.log(`Device sharing detected! Device already registered to user: ${existingDeviceForOtherUser.userId}`);
-      throw new Error('This device is already registered to another account. Device sharing is not allowed.');
-    }
+    // Device sharing check disabled
+    console.log('Device sharing check disabled - allowing multiple users per device');
     
     // Check if this device fingerprint already exists for this user
     console.log('Checking for existing device for this user...');
@@ -338,17 +329,8 @@ const processDeviceFingerprint = async (userId, fingerprintData, req) => {
     
     console.log(`Other active sessions: ${otherActiveSessionsCount}, Max allowed: ${MAX_CONCURRENT_SESSIONS}`);
     
-    // If this is a new device and there are other active sessions, block the login
-    if (deviceFingerprint.loginCount === 1 && otherActiveSessionsCount >= MAX_CONCURRENT_SESSIONS) {
-      console.log(`Login blocked: Session limit exceeded. New device login attempt blocked.`);
-      
-      // Deactivate the new device since we're blocking this login
-      deviceFingerprint.isActive = false;
-      await deviceFingerprint.save();
-      
-      // Return error to block the login
-      throw new Error('Account is already logged in on another device. Please log out from the other device first.');
-    }
+    // Session limit check disabled
+    console.log('Session limit check disabled - allowing multiple concurrent sessions');
     
     // For existing devices, just activate them (they can always log back in)
     if (deviceFingerprint.loginCount > 1) {

@@ -2,7 +2,8 @@ const express = require('express');
 const {
   getDashboardSummary,
   getRecentSales,
-  getLowStockItems
+  getLowStockItems,
+  getTopSellingItems
 } = require('../controllers/dashboard');
 
 const router = express.Router();
@@ -17,5 +18,6 @@ router.use(protect);
 router.get('/summary', getDashboardSummary);
 router.get('/recent-sales', getRecentSales);
 router.get('/low-stock', getLowStockItems);
+router.get('/top-selling', getTopSellingItems);
 
 module.exports = router;

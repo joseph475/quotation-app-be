@@ -2,6 +2,7 @@ const Inventory = require('../models/Inventory');
 const Sale = require('../models/Sale');
 const Quotation = require('../models/Quotation');
 const Customer = require('../models/Customer');
+const User = require('../models/User');
 
 /**
  * @desc    Get dashboard summary
@@ -12,8 +13,32 @@ exports.getDashboardSummary = async (req, res) => {
   try {
     // Get counts
     const inventoryCount = await Inventory.countDocuments();
-    const customerCount = await Customer.countDocuments();
-    const quotationCount = await Quotation.countDocuments();
+    
+    // Count only pending quotations
+    const pendingQuotationCount = await Quotation.countDocuments({ status: 'pending' });
+    
+    // Count active customers (users with role 'user' who have made sales or quotations in the last 90 days)
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    
+    const activeCustomerIds = await Sale.distinct('customer', {
+      createdAt: { $gte: ninetyDaysAgo }
+    });
+    
+    const activeQuotationCustomerIds = await Quotation.distinct('customer', {
+      createdAt: { $gte: ninetyDaysAgo }
+    });
+    
+    // Combine and get unique customer IDs, then verify they are users with role 'user'
+    const allActiveCustomerIds = [...new Set([...activeCustomerIds, ...activeQuotationCustomerIds])];
+    
+    // Count only users with role 'user' from the active customer IDs
+    const activeCustomerCount = await User.countDocuments({
+      _id: { $in: allActiveCustomerIds },
+      role: 'user',
+      isActive: true
+    });
+    
     const saleCount = await Sale.countDocuments();
 
     // Get sales total
@@ -75,8 +100,8 @@ exports.getDashboardSummary = async (req, res) => {
       data: {
         counts: {
           inventory: inventoryCount,
-          customers: customerCount,
-          quotations: quotationCount,
+          customers: activeCustomerCount,
+          quotations: pendingQuotationCount,
           sales: saleCount
         },
         sales: {
@@ -124,7 +149,75 @@ exports.getRecentSales = async (req, res) => {
 };
 
 /**
- * @desc    Get low stock items
+ * @desc    Get top selling items
+ * @route   GET /api/v1/dashboard/top-selling
+ * @access  Private
+ */
+exports.getTopSellingItems = async (req, res) => {
+  try {
+    // Get top selling items from sales data
+    const topSellingItems = await Sale.aggregate([
+      // Unwind the items array to work with individual items
+      { $unwind: '$items' },
+      
+      // Group by inventory item and sum quantities
+      {
+        $group: {
+          _id: '$items.inventory',
+          totalQuantitySold: { $sum: '$items.quantity' },
+          totalRevenue: { $sum: '$items.total' },
+          salesCount: { $sum: 1 }
+        }
+      },
+      
+      // Sort by total quantity sold (descending)
+      { $sort: { totalQuantitySold: -1 } },
+      
+      // Limit to top 10
+      { $limit: 10 },
+      
+      // Lookup inventory details
+      {
+        $lookup: {
+          from: 'inventories',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'inventoryDetails'
+        }
+      },
+      
+      // Unwind inventory details
+      { $unwind: '$inventoryDetails' },
+      
+      // Project the final structure
+      {
+        $project: {
+          _id: '$inventoryDetails._id',
+          name: '$inventoryDetails.name',
+          itemCode: '$inventoryDetails.itemCode',
+          currentStock: '$inventoryDetails.quantity',
+          totalQuantitySold: 1,
+          totalRevenue: 1,
+          salesCount: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: topSellingItems.length,
+      data: topSellingItems
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Get low stock items (kept for backward compatibility)
  * @route   GET /api/v1/dashboard/low-stock
  * @access  Private
  */
