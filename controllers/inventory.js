@@ -274,9 +274,28 @@ exports.importExcel = async (req, res) => {
     }
 
     let imported = 0;
+    let updated = 0;
+    let created = 0;
     let errors = [];
 
-    // Process each row
+    // Count existing items before import for debugging
+    const existingItemsCount = await Inventory.countDocuments();
+    console.log(`Starting import: ${existingItemsCount} existing items in database`);
+    
+    // Log all existing items for debugging
+    const existingItems = await Inventory.find({}, 'itemcode barcode name').lean();
+    console.log('Existing items before import:', existingItems.map(item => ({
+      id: item._id,
+      itemcode: item.itemcode,
+      barcode: item.barcode,
+      name: item.name
+    })));
+
+    // CRITICAL SAFETY CHECK: Store all existing item IDs to ensure none are deleted
+    const existingItemIds = existingItems.map(item => item._id.toString());
+    console.log('Protected item IDs (these must NOT be deleted):', existingItemIds);
+
+    // Process each row with enhanced safety
     for (let i = 0; i < jsonData.length; i++) {
       const row = jsonData[i];
       
@@ -303,36 +322,105 @@ exports.importExcel = async (req, res) => {
           continue;
         }
 
-        // Check if item already exists
-        const existingItem = await Inventory.findOne({
-          $or: [
-            { itemcode: inventoryItem.itemcode },
-            { barcode: inventoryItem.barcode }
-          ]
-        });
+        console.log(`Processing row ${i + 1}: itemcode=${inventoryItem.itemcode}, barcode=${inventoryItem.barcode}, name=${inventoryItem.name}`);
+
+        // Check if item already exists (more robust checking)
+        let existingItem = null;
+        
+        // First check by itemcode if it exists
+        if (inventoryItem.itemcode) {
+          existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
+          if (existingItem) {
+            console.log(`Found existing item by itemcode: ${existingItem.name} (ID: ${existingItem._id})`);
+          }
+        }
+        
+        // If not found by itemcode and barcode exists, check by barcode
+        if (!existingItem && inventoryItem.barcode) {
+          existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
+          if (existingItem) {
+            console.log(`Found existing item by barcode: ${existingItem.name} (ID: ${existingItem._id})`);
+          }
+        }
 
         if (existingItem) {
-          // Update existing item
-          await Inventory.findByIdAndUpdate(existingItem._id, inventoryItem, {
-            new: true,
-            runValidators: true
-          });
+          // SAFETY CHECK: Ensure we're not accidentally affecting other items
+          try {
+            // Update existing item - only preserve itemcode
+            const updateData = {
+              name: inventoryItem.name,
+              barcode: inventoryItem.barcode,
+              unit: inventoryItem.unit,
+              cost: inventoryItem.cost,
+              price: inventoryItem.price,
+              itemcode: existingItem.itemcode // Preserve original itemcode only
+            };
+            
+            const updatedItem = await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
+              new: true,
+              runValidators: true
+            });
+            
+            console.log(`Successfully updated item: ${updatedItem.name} (ID: ${updatedItem._id})`);
+            updated++;
+          } catch (updateError) {
+            console.error(`Error updating item ${existingItem._id}:`, updateError);
+            errors.push(`Row ${i + 1}: Failed to update existing item - ${updateError.message}`);
+          }
         } else {
-          // Create new item
-          await Inventory.create(inventoryItem);
+          // Create new item only if it doesn't exist
+          try {
+            const newItem = await Inventory.create(inventoryItem);
+            console.log(`Successfully created new item: ${newItem.name} (ID: ${newItem._id})`);
+            created++;
+          } catch (createError) {
+            console.error(`Error creating new item:`, createError);
+            errors.push(`Row ${i + 1}: Failed to create new item - ${createError.message}`);
+          }
         }
 
         imported++;
       } catch (error) {
+        console.error(`Error processing row ${i + 1}:`, error);
         errors.push(`Row ${i + 1}: ${error.message}`);
       }
     }
 
+    // CRITICAL SAFETY VERIFICATION: Check if any existing items were accidentally deleted
+    const remainingItems = await Inventory.find({}, '_id').lean();
+    const remainingItemIds = remainingItems.map(item => item._id.toString());
+    
+    const deletedItems = existingItemIds.filter(id => !remainingItemIds.includes(id));
+    if (deletedItems.length > 0) {
+      console.error('CRITICAL ERROR: Items were deleted during import!', deletedItems);
+      errors.push(`CRITICAL: ${deletedItems.length} existing items were accidentally deleted during import`);
+    } else {
+      console.log('SAFETY CHECK PASSED: No existing items were deleted during import');
+    }
+
+    // Count items after import for verification
+    const finalItemsCount = await Inventory.countDocuments();
+    console.log(`Import completed: ${finalItemsCount} total items in database (was ${existingItemsCount})`);
+    console.log(`Import summary: ${created} created, ${updated} updated, ${errors.length} errors`);
+    
+    // Log all items after import for debugging
+    const finalItems = await Inventory.find({}, 'itemcode barcode name').lean();
+    console.log('Items after import:', finalItems.map(item => ({
+      id: item._id,
+      itemcode: item.itemcode,
+      barcode: item.barcode,
+      name: item.name
+    })));
+
     res.status(200).json({
       success: true,
-      message: `Successfully processed ${imported} items from Excel file`,
+      message: `Successfully processed ${imported} items from Excel file (${created} created, ${updated} updated)`,
       data: {
         imported,
+        created,
+        updated,
+        beforeCount: existingItemsCount,
+        afterCount: finalItemsCount,
         errors: errors.length > 0 ? errors : undefined,
         totalRows: jsonData.length
       }
