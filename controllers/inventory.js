@@ -1,4 +1,5 @@
 const Inventory = require('../models/Inventory');
+const XLSX = require('xlsx');
 
 /**
  * @desc    Search inventory items
@@ -111,6 +112,7 @@ exports.getInventory = async (req, res) => {
     res.status(200).json({
       success: true,
       count: inventory.length,
+      total: total,
       pagination,
       data: inventory
     });
@@ -229,6 +231,118 @@ exports.deleteInventoryItem = async (req, res) => {
     res.status(400).json({
       success: false,
       message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Import inventory items from Excel file
+ * @route   POST /api/v1/inventory/import-excel
+ * @access  Private/Superadmin
+ */
+exports.importExcel = async (req, res) => {
+  try {
+    // Check if user is superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only superadmin can import Excel files.'
+      });
+    }
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload an Excel file'
+      });
+    }
+
+    // Parse Excel file
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Convert to JSON
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    if (!jsonData || jsonData.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel file is empty or invalid'
+      });
+    }
+
+    let imported = 0;
+    let errors = [];
+
+    // Process each row
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      
+      try {
+        // Map Excel columns to inventory fields
+        // Expected columns: itemcode, name, barcode, unit, cost, price
+        const inventoryItem = {
+          itemcode: row.itemcode || row.ItemCode || row['Item Code'],
+          name: row.name || row.Name || row['Item Name'],
+          barcode: row.barcode || row.Barcode || row['Bar Code'],
+          unit: row.unit || row.Unit || 'pcs',
+          cost: parseFloat(row.cost || row.Cost || 0),
+          price: parseFloat(row.price || row.Price || 0)
+        };
+
+        // Validate required fields
+        if (!inventoryItem.name) {
+          errors.push(`Row ${i + 1}: Name is required`);
+          continue;
+        }
+
+        if (!inventoryItem.itemcode) {
+          errors.push(`Row ${i + 1}: Item code is required`);
+          continue;
+        }
+
+        // Check if item already exists
+        const existingItem = await Inventory.findOne({
+          $or: [
+            { itemcode: inventoryItem.itemcode },
+            { barcode: inventoryItem.barcode }
+          ]
+        });
+
+        if (existingItem) {
+          // Update existing item
+          await Inventory.findByIdAndUpdate(existingItem._id, inventoryItem, {
+            new: true,
+            runValidators: true
+          });
+        } else {
+          // Create new item
+          await Inventory.create(inventoryItem);
+        }
+
+        imported++;
+      } catch (error) {
+        errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully processed ${imported} items from Excel file`,
+      data: {
+        imported,
+        errors: errors.length > 0 ? errors : undefined,
+        totalRows: jsonData.length
+      }
+    });
+
+  } catch (err) {
+    console.error('Excel import error:', err);
+    res.status(400).json({
+      success: false,
+      message: err.message || 'Failed to import Excel file'
     });
   }
 };
