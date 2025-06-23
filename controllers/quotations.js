@@ -1,5 +1,6 @@
 const Quotation = require('../models/Quotation');
 const Inventory = require('../models/Inventory');
+const webSocketService = require('../utils/websocketService');
 
 /**
  * @desc    Get all quotations
@@ -156,6 +157,17 @@ exports.createQuotation = async (req, res) => {
     // Create quotation
     const quotation = await Quotation.create(req.body);
 
+    // Notify admin users about new quotation via WebSocket
+    webSocketService.notifyQuotationCreated({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      total: quotation.total,
+      status: quotation.status,
+      createdBy: req.user.id,
+      createdAt: quotation.createdAt
+    });
+
     res.status(201).json({
       success: true,
       data: quotation
@@ -198,6 +210,17 @@ exports.updateQuotation = async (req, res) => {
     quotation = await Quotation.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
+    });
+
+    // Notify admin users about quotation update via WebSocket
+    webSocketService.notifyQuotationUpdated({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      total: quotation.total,
+      status: quotation.status,
+      updatedBy: req.user.id,
+      updatedAt: new Date()
     });
 
     res.status(200).json({
@@ -306,6 +329,17 @@ exports.approveQuotation = async (req, res) => {
     quotation.status = 'approved';
     await quotation.save();
 
+    // Notify all users about quotation status change via WebSocket
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      assignedDelivery: quotation.assignedDelivery,
+      approvedBy: req.user.id,
+      updatedAt: new Date()
+    });
+
     res.status(200).json({
       success: true,
       data: quotation
@@ -353,6 +387,16 @@ exports.rejectQuotation = async (req, res) => {
     // Update quotation status
     quotation.status = 'rejected';
     await quotation.save();
+
+    // Notify all users about quotation status change via WebSocket
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      rejectedBy: req.user.id,
+      updatedAt: new Date()
+    });
 
     res.status(200).json({
       success: true,
@@ -438,6 +482,17 @@ exports.markAsDelivered = async (req, res) => {
         await inventoryItem.save();
       }
     }
+
+    // Notify all users about quotation status change via WebSocket
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      deliveredBy: req.user.id,
+      saleCreated: sale._id,
+      updatedAt: new Date()
+    });
 
     res.status(200).json({
       success: true,
@@ -556,6 +611,17 @@ exports.convertToSale = async (req, res) => {
         await inventoryItem.save();
       }
     }
+
+    // Notify all users about quotation status change via WebSocket
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      convertedBy: req.user.id,
+      saleCreated: sale._id,
+      updatedAt: new Date()
+    });
 
     res.status(200).json({
       success: true,

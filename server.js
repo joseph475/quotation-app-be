@@ -2,12 +2,17 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const http = require('http');
+const webSocketService = require('./utils/websocketService');
 
 // Load environment variables
 dotenv.config();
 
 // Initialize Express app
 const app = express();
+
+// Create HTTP server
+const server = http.createServer(app);
 
 // Middleware
 app.use(cors());
@@ -88,13 +93,17 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Initialize WebSocket service
+webSocketService.initialize(server);
+
 // Export the app for Vercel
 module.exports = app;
 
 // Start server only if not in Vercel environment
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   const PORT = process.env.PORT || 8000;
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`WebSocket server available at ws://localhost:${PORT}/ws`);
   });
 }
