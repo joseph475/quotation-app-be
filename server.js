@@ -109,7 +109,11 @@ if (!process.env.VERCEL) {
   console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(`VERCEL: ${process.env.VERCEL}`);
   
-  server.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, (err) => {
+    if (err) {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+    }
     console.log(`Server running on port ${PORT}`);
     console.log(`Server accessible at:`);
     console.log(`  - Local: http://localhost:${PORT}`);
@@ -117,16 +121,22 @@ if (!process.env.VERCEL) {
     console.log(`WebSocket server available at:`);
     console.log(`  - Local: ws://localhost:${PORT}/ws`);
     console.log(`  - Network: ws://0.0.0.0:${PORT}/ws`);
+    console.log('Server started successfully - keeping alive');
   });
   
   // Handle graceful shutdown for Railway
   process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    process.exit(0);
+    console.log('SIGTERM received - ignoring for Railway compatibility');
+    // Don't exit - let Railway handle the process lifecycle
   });
   
   process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    process.exit(0);
+    console.log('SIGINT received - ignoring for Railway compatibility');
+    // Don't exit - let Railway handle the process lifecycle
   });
+  
+  // Keep the process alive
+  setInterval(() => {
+    // Heartbeat to keep process alive
+  }, 30000);
 }
