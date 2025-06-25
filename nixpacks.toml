@@ -2,10 +2,13 @@
 nixPkgs = ['nodejs-18_x', 'npm-9_x']
 
 [phases.install]
-cmds = ['npm ci']
+cmds = ['npm ci --only=production']
 
 [phases.build]
 cmds = ['echo "Build phase complete"']
 
 [start]
-cmd = 'npm start'
+cmd = 'node server.js'
+
+[variables]
+NODE_ENV = 'production'

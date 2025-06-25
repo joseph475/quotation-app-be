@@ -126,17 +126,24 @@ if (!process.env.VERCEL) {
   
   // Handle graceful shutdown for Railway
   process.on('SIGTERM', () => {
-    console.log('SIGTERM received - ignoring for Railway compatibility');
-    // Don't exit - let Railway handle the process lifecycle
+    console.log('SIGTERM received - shutting down gracefully');
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
   });
   
   process.on('SIGINT', () => {
-    console.log('SIGINT received - ignoring for Railway compatibility');
-    // Don't exit - let Railway handle the process lifecycle
+    console.log('SIGINT received - shutting down gracefully');
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
   });
-  
-  // Keep the process alive
-  setInterval(() => {
-    // Heartbeat to keep process alive
-  }, 30000);
 }
