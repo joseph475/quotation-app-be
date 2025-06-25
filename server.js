@@ -31,8 +31,17 @@ app.use((req, res, next) => {
 // Connect to MongoDB for local development
 const connectDB = require('./config/database');
 
-// Connect to database
-connectDB().catch(console.error);
+// Connect to database and wait for connection
+let dbConnected = false;
+connectDB()
+  .then(() => {
+    dbConnected = true;
+    console.log('Database connection established');
+  })
+  .catch((error) => {
+    console.error('Database connection failed:', error);
+    process.exit(1);
+  });
 
 // Routes
 app.use('/api/v1/auth', require('./routes/auth'));
@@ -66,12 +75,27 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'healthy',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  const isHealthy = dbConnected && mongoose.connection.readyState === 1;
+  
+  res.status(isHealthy ? 200 : 503).json({
+    success: isHealthy,
+    status: isHealthy ? 'healthy' : 'unhealthy',
+    database: dbStatus,
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// Readiness check endpoint
+app.get('/ready', (req, res) => {
+  const isReady = dbConnected && mongoose.connection.readyState === 1;
+  
+  res.status(isReady ? 200 : 503).json({
+    success: isReady,
+    status: isReady ? 'ready' : 'not ready',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -125,25 +149,56 @@ if (!process.env.VERCEL) {
   });
   
   // Handle graceful shutdown for Railway
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received - shutting down gracefully');
-    server.close(() => {
-      console.log('HTTP server closed');
-      mongoose.connection.close(false, () => {
-        console.log('MongoDB connection closed');
+  let isShuttingDown = false;
+  
+  const gracefulShutdown = (signal) => {
+    if (isShuttingDown) {
+      console.log(`${signal} received again, forcing exit`);
+      process.exit(1);
+    }
+    
+    isShuttingDown = true;
+    console.log(`${signal} received - shutting down gracefully`);
+    
+    // Set a timeout to force exit if graceful shutdown takes too long
+    const shutdownTimeout = setTimeout(() => {
+      console.log('Graceful shutdown timeout, forcing exit');
+      process.exit(1);
+    }, 10000); // 10 seconds timeout
+    
+    server.close((err) => {
+      if (err) {
+        console.error('Error closing HTTP server:', err);
+      } else {
+        console.log('HTTP server closed');
+      }
+      
+      mongoose.connection.close(false, (err) => {
+        if (err) {
+          console.error('Error closing MongoDB connection:', err);
+        } else {
+          console.log('MongoDB connection closed');
+        }
+        
+        clearTimeout(shutdownTimeout);
+        console.log('Graceful shutdown completed');
         process.exit(0);
       });
     });
+  };
+  
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
   });
   
-  process.on('SIGINT', () => {
-    console.log('SIGINT received - shutting down gracefully');
-    server.close(() => {
-      console.log('HTTP server closed');
-      mongoose.connection.close(false, () => {
-        console.log('MongoDB connection closed');
-        process.exit(0);
-      });
-    });
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION');
   });
 }

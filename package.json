@@ -13,7 +13,9 @@
     "seed:delete": "node seeder.js -d",
     "check-db": "node check-mongodb.js",
     "start-safe": "node start-server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test-deploy": "node deploy-test.js",
+    "test-local": "node deploy-test.js http://localhost:8000"
   },
   "keywords": [
     "mongodb",

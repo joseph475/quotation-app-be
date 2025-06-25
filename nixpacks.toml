@@ -12,3 +12,11 @@ cmd = 'node server.js'
 
 [variables]
 NODE_ENV = 'production'
+
+# Health check configuration
+[healthcheck]
+path = '/health'
+interval = 30
+timeout = 10
+retries = 3
+start_period = 60
