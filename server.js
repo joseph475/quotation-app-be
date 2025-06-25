@@ -31,10 +31,8 @@ app.use((req, res, next) => {
 // Connect to MongoDB for local development
 const connectDB = require('./config/database');
 
-// Connect to database if running locally
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  connectDB().catch(console.error);
-}
+// Connect to database
+connectDB().catch(console.error);
 
 // Routes
 app.use('/api/v1/auth', require('./routes/auth'));
@@ -102,8 +100,8 @@ webSocketService.initialize(server);
 // Export the app for Vercel
 module.exports = app;
 
-// Start server only if not in Vercel environment
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+// Start server (Railway and other platforms)
+if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 8000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
