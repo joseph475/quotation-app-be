@@ -164,7 +164,11 @@ exports.createQuotation = async (req, res) => {
       customer: quotation.customer,
       total: quotation.total,
       status: quotation.status,
-      createdBy: req.user.id,
+      createdBy: {
+        _id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
+      },
       createdAt: quotation.createdAt
     });
 
@@ -285,7 +289,8 @@ exports.deleteQuotation = async (req, res) => {
  */
 exports.approveQuotation = async (req, res) => {
   try {
-    const quotation = await Quotation.findById(req.params.id);
+    // Populate the quotation with createdBy user details
+    const quotation = await Quotation.findById(req.params.id).populate('createdBy', 'name email');
 
     if (!quotation) {
       return res.status(404).json({
@@ -331,11 +336,16 @@ exports.approveQuotation = async (req, res) => {
 
     // Notify all users about quotation status change via WebSocket
     webSocketService.notifyQuotationStatusChanged({
-      quotationId: quotation._id,
-      quotationNumber: quotation.quotationNumber,
-      customer: quotation.customer,
-      status: quotation.status,
-      assignedDelivery: quotation.assignedDelivery,
+      quotation: {
+        _id: quotation._id,
+        quotationNumber: quotation.quotationNumber,
+        customer: quotation.customer,
+        status: quotation.status,
+        assignedDelivery: quotation.assignedDelivery,
+        createdBy: quotation.createdBy // This will now include the populated user data
+      },
+      previousStatus: 'pending',
+      newStatus: quotation.status,
       approvedBy: req.user.id,
       updatedAt: new Date()
     });

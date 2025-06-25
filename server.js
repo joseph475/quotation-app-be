@@ -14,8 +14,11 @@ const app = express();
 // Create HTTP server
 const server = http.createServer(app);
 
-// Middleware
-app.use(cors());
+// Middleware - Configure CORS for mobile access
+app.use(cors({
+  origin: true, // Allow all origins for development
+  credentials: true
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -102,8 +105,13 @@ module.exports = app;
 // Start server only if not in Vercel environment
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   const PORT = process.env.PORT || 8000;
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`WebSocket server available at ws://localhost:${PORT}/ws`);
+    console.log(`Server accessible at:`);
+    console.log(`  - Local: http://localhost:${PORT}`);
+    console.log(`  - Network: http://0.0.0.0:${PORT}`);
+    console.log(`WebSocket server available at:`);
+    console.log(`  - Local: ws://localhost:${PORT}/ws`);
+    console.log(`  - Network: ws://0.0.0.0:${PORT}/ws`);
   });
 }
