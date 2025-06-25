@@ -8,7 +8,7 @@ cmds = ['npm ci --only=production']
 cmds = ['echo "Build phase complete"']
 
 [start]
-cmd = 'node server.js'
+cmd = 'npm start'
 
 [variables]
 NODE_ENV = 'production'
