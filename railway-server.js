@@ -28,10 +28,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Connect to MongoDB for local development
+// Connect to MongoDB
 const connectDB = require('./config/database');
-
-// Connect to database
 connectDB().catch(console.error);
 
 // Routes
@@ -75,7 +73,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('ERROR OCCURRED:');
@@ -97,33 +94,43 @@ app.use((err, req, res, next) => {
 // Initialize WebSocket service
 webSocketService.initialize(server);
 
-// Export the app for Vercel
-module.exports = app;
+// Railway-specific server startup
+const PORT = process.env.PORT || 8000;
 
-// Start server (Railway and other platforms)
-if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 8000;
-  console.log(`Environment PORT: ${process.env.PORT}`);
-  console.log(`Using PORT: ${PORT}`);
-  console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
-  console.log(`VERCEL: ${process.env.VERCEL}`);
-  
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Server accessible at:`);
-    console.log(`  - Local: http://localhost:${PORT}`);
-    console.log(`  - Network: http://0.0.0.0:${PORT}`);
-    console.log(`WebSocket server available at:`);
-    console.log(`  - Local: ws://localhost:${PORT}/ws`);
-    console.log(`  - Network: ws://0.0.0.0:${PORT}/ws`);
+console.log(`Starting Railway server...`);
+console.log(`Environment PORT: ${process.env.PORT}`);
+console.log(`Using PORT: ${PORT}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Server accessible at:`);
+  console.log(`  - Local: http://localhost:${PORT}`);
+  console.log(`  - Network: http://0.0.0.0:${PORT}`);
+  console.log(`WebSocket server available at:`);
+  console.log(`  - Local: ws://localhost:${PORT}/ws`);
+  console.log(`  - Network: ws://0.0.0.0:${PORT}/ws`);
+});
+
+// Handle process signals
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received');
+  server.close(() => {
+    console.log('HTTP server closed');
+    mongoose.connection.close(false, () => {
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
   });
-  
-  // Keep the process alive
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received, keeping process alive for Railway');
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received');
+  server.close(() => {
+    console.log('HTTP server closed');
+    mongoose.connection.close(false, () => {
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
   });
-  
-  process.on('SIGINT', () => {
-    console.log('SIGINT received, keeping process alive for Railway');
-  });
-}
+});
