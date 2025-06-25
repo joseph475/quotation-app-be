@@ -133,7 +133,7 @@ if (!process.env.VERCEL) {
   console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(`VERCEL: ${process.env.VERCEL}`);
   
-  server.listen(PORT, (err) => {
+  server.listen(PORT, '0.0.0.0', (err) => {
     if (err) {
       console.error('Failed to start server:', err);
       process.exit(1);
