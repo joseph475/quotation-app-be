@@ -3,6 +3,7 @@ const Inventory = require('../models/Inventory');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const Customer = require('../models/Customer');
 const User = require('../models/User');
+const Quotation = require('../models/Quotation');
 
 /**
  * @desc    Get sales report
@@ -101,6 +102,147 @@ exports.getSalesReport = async (req, res, next) => {
     });
   } catch (err) {
     console.error('Sales Report Error:', err);
+    next(err);
+  }
+};
+
+/**
+ * @desc    Get delivery report
+ * @route   GET /api/v1/reports/delivery
+ * @access  Private/Admin,User,Delivery
+ */
+exports.getDeliveryReport = async (req, res, next) => {
+  try {
+    const { startDate, endDate, deliveryUser, status } = req.query;
+    
+    // Validate date range
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide start and end dates'
+      });
+    }
+    
+    console.log('Delivery Report - Date range:', { startDate, endDate });
+    console.log('Delivery Report - Filters:', { deliveryUser, status });
+    
+    // Build query with proper date handling
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    // Set end date to end of day
+    endDateObj.setHours(23, 59, 59, 999);
+    
+    const query = {
+      assignedDelivery: { $exists: true, $ne: null },
+      updatedAt: {
+        $gte: startDateObj,
+        $lte: endDateObj
+      }
+    };
+    
+    // Add delivery user filter if provided
+    if (deliveryUser && deliveryUser !== 'all') {
+      query.assignedDelivery = deliveryUser;
+    }
+    
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    console.log('Delivery Report - Query:', query);
+    
+    // Get quotations with delivery assignments within date range
+    const deliveries = await Quotation.find(query)
+      .populate('customer', 'name email phone')
+      .populate('assignedDelivery', 'name email phone')
+      .sort({ updatedAt: -1 });
+    
+    console.log('Delivery Report - Deliveries found:', deliveries.length);
+    
+    // Get all delivery users for filtering
+    const deliveryUsers = await User.find({ 
+      role: 'delivery',
+      isActive: true 
+    }).select('name email phone');
+    
+    console.log('Delivery Report - Delivery users found:', deliveryUsers.length);
+    
+    // Calculate summary statistics
+    const totalDeliveries = deliveries.length;
+    const completedDeliveries = deliveries.filter(d => d.status === 'delivered').length;
+    const pendingDeliveries = deliveries.filter(d => d.status === 'approved' || d.status === 'pending').length;
+    const totalDeliveryAccounts = deliveryUsers.length;
+    
+    // Group deliveries by delivery user
+    const deliveriesByUser = {};
+    deliveries.forEach(delivery => {
+      if (!delivery.assignedDelivery) return;
+      
+      const userId = delivery.assignedDelivery._id.toString();
+      if (!deliveriesByUser[userId]) {
+        deliveriesByUser[userId] = {
+          user: delivery.assignedDelivery,
+          totalDeliveries: 0,
+          completedDeliveries: 0,
+          pendingDeliveries: 0,
+          totalRevenue: 0
+        };
+      }
+      
+      deliveriesByUser[userId].totalDeliveries += 1;
+      if (delivery.status === 'delivered') {
+        deliveriesByUser[userId].completedDeliveries += 1;
+      } else if (delivery.status === 'approved' || delivery.status === 'pending') {
+        deliveriesByUser[userId].pendingDeliveries += 1;
+      }
+      deliveriesByUser[userId].totalRevenue += (delivery.total || 0);
+    });
+    
+    // Convert to array format for frontend
+    const deliveryAccounts = Object.values(deliveriesByUser);
+    
+    // Format deliveries for frontend
+    const formattedDeliveries = deliveries.map(delivery => ({
+      _id: delivery._id,
+      quotationNumber: delivery.quotationNumber,
+      customer: delivery.customer,
+      customerName: delivery.customer?.name || 'Unknown Customer',
+      assignedDelivery: delivery.assignedDelivery,
+      deliveryPersonnel: delivery.assignedDelivery?.name || 'Not Assigned',
+      assignedDate: delivery.updatedAt, // Use updatedAt as assignment date
+      createdAt: delivery.createdAt,
+      status: delivery.status,
+      total: delivery.total,
+      amount: delivery.total,
+      items: delivery.items || [],
+      deliveryAddress: delivery.deliveryAddress || `${delivery.customer?.name || 'Customer'} Address`,
+      notes: delivery.notes
+    }));
+    
+    console.log('Delivery Report - Response data:', {
+      totalDeliveries,
+      completedDeliveries,
+      pendingDeliveries,
+      totalDeliveryAccounts,
+      deliveryAccountsCount: deliveryAccounts.length
+    });
+    
+    // Return report data
+    res.status(200).json({
+      success: true,
+      data: {
+        deliveries: formattedDeliveries,
+        deliveryAccounts,
+        deliveryPersonnel: deliveryUsers,
+        totalDeliveryAccounts,
+        totalDeliveries,
+        completedDeliveries,
+        pendingDeliveries
+      }
+    });
+  } catch (err) {
+    console.error('Delivery Report Error:', err);
     next(err);
   }
 };

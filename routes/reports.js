@@ -4,7 +4,8 @@ const {
   getSalesReport,
   getInventoryReport,
   getPurchasesReport,
-  getCustomersReport
+  getCustomersReport,
+  getDeliveryReport
 } = require('../controllers/reports');
 
 const router = express.Router();
@@ -13,12 +14,13 @@ const router = express.Router();
 router.use(protect);
 
 // Allow both admin and user roles to access reports
-router.use(authorize('admin', 'user'));
+router.use(authorize('admin', 'user', 'delivery'));
 
 // Report routes
 router.get('/sales', getSalesReport);
 router.get('/inventory', getInventoryReport);
 router.get('/purchases', getPurchasesReport);
 router.get('/customers', getCustomersReport);
+router.get('/delivery', getDeliveryReport);
 
 module.exports = router;
