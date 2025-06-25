@@ -8,7 +8,6 @@
   },
   "scripts": {
     "start": "node server.js",
-    "start:railway": "node railway-server.js",
     "dev": "nodemon server.js",
     "seed": "node seeder.js -i",
     "seed:delete": "node seeder.js -d",

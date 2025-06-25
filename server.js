@@ -103,12 +103,13 @@ module.exports = app;
 // Start server (Railway and other platforms)
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 8000;
+  console.log(`Starting server...`);
   console.log(`Environment PORT: ${process.env.PORT}`);
   console.log(`Using PORT: ${PORT}`);
   console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(`VERCEL: ${process.env.VERCEL}`);
   
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Server accessible at:`);
     console.log(`  - Local: http://localhost:${PORT}`);
@@ -118,12 +119,26 @@ if (!process.env.VERCEL) {
     console.log(`  - Network: ws://0.0.0.0:${PORT}/ws`);
   });
   
-  // Keep the process alive
+  // Handle graceful shutdown for Railway
   process.on('SIGTERM', () => {
-    console.log('SIGTERM received, keeping process alive for Railway');
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
   });
   
   process.on('SIGINT', () => {
-    console.log('SIGINT received, keeping process alive for Railway');
+    console.log('SIGINT received, shutting down gracefully');
+    server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
   });
 }
