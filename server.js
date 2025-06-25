@@ -126,7 +126,7 @@ module.exports = app;
 
 // Start server (Railway and other platforms)
 if (!process.env.VERCEL) {
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8000;
   console.log(`Starting server...`);
   console.log(`Environment PORT: ${process.env.PORT}`);
   console.log(`Using PORT: ${PORT}`);
