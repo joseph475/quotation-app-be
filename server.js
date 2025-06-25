@@ -151,7 +151,7 @@ if (!process.env.VERCEL) {
   // Handle graceful shutdown for Railway
   let isShuttingDown = false;
   
-  const gracefulShutdown = (signal) => {
+  const gracefulShutdown = async (signal) => {
     if (isShuttingDown) {
       console.log(`${signal} received again, forcing exit`);
       process.exit(1);
@@ -166,25 +166,32 @@ if (!process.env.VERCEL) {
       process.exit(1);
     }, 10000); // 10 seconds timeout
     
-    server.close((err) => {
-      if (err) {
-        console.error('Error closing HTTP server:', err);
-      } else {
-        console.log('HTTP server closed');
-      }
-      
-      mongoose.connection.close(false, (err) => {
-        if (err) {
-          console.error('Error closing MongoDB connection:', err);
-        } else {
-          console.log('MongoDB connection closed');
-        }
-        
-        clearTimeout(shutdownTimeout);
-        console.log('Graceful shutdown completed');
-        process.exit(0);
+    try {
+      // Close HTTP server
+      await new Promise((resolve, reject) => {
+        server.close((err) => {
+          if (err) {
+            console.error('Error closing HTTP server:', err);
+            reject(err);
+          } else {
+            console.log('HTTP server closed');
+            resolve();
+          }
+        });
       });
-    });
+      
+      // Close MongoDB connection (no callback in newer versions)
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed');
+      
+      clearTimeout(shutdownTimeout);
+      console.log('Graceful shutdown completed');
+      process.exit(0);
+    } catch (error) {
+      console.error('Error during graceful shutdown:', error);
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
   };
   
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
