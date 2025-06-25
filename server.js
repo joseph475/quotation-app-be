@@ -15,31 +15,45 @@ const app = express();
 const server = http.createServer(app);
 
 // Middleware - Configure CORS for mobile access
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001', 
-  'http://localhost:8080',
-  'https://quotation-app-fe.onrender.com',
-  'https://quotation-app-fe.vercel.app',
-  'https://railway.com' // Keep existing Railway origin
-];
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'http://localhost:8080',
+      'https://quotation-app-fe.onrender.com',
+      'https://quotation-app-fe.vercel.app',
+      'https://railway.com'
+    ];
+
+console.log('CORS Configuration:');
+console.log('Allowed origins:', allowedOrigins);
+console.log('Environment ALLOWED_ORIGINS:', process.env.ALLOWED_ORIGINS);
 
 app.use(cors({
   origin: function (origin, callback) {
+    console.log('CORS check for origin:', origin);
+    
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('No origin - allowing request');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('Origin allowed:', origin);
       callback(null, true);
     } else {
-      console.log('CORS blocked origin:', origin);
+      console.log('CORS BLOCKED - Origin not allowed:', origin);
       console.log('Allowed origins:', allowedOrigins);
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
