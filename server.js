@@ -124,7 +124,7 @@ webSocketService.initialize(server);
 // Export the app for Vercel
 module.exports = app;
 
-// Start server (Railway and other platforms)
+// Start server (for deployment platforms)
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 8000;
   console.log(`Starting server...`);
@@ -132,7 +132,6 @@ if (!process.env.VERCEL) {
   console.log(`Using PORT: ${PORT}`);
   console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
   console.log(`VERCEL: ${process.env.VERCEL}`);
-  console.log(`RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT}`);
   
   server.listen(PORT, '0.0.0.0', (err) => {
     if (err) {
@@ -149,7 +148,7 @@ if (!process.env.VERCEL) {
     console.log('Server started successfully - keeping alive');
   });
   
-  // Handle graceful shutdown for Railway
+  // Handle graceful shutdown
   let isShuttingDown = false;
   
   const gracefulShutdown = async (signal) => {
