@@ -49,7 +49,7 @@ exports.getQuotations = async (req, res) => {
         select: 'name itemcode'
       }).populate({
         path: 'assignedDelivery',
-        select: 'name email'
+        select: 'name email phone'
       }).populate({
         path: 'createdBy',
         select: 'name email'
@@ -535,7 +535,7 @@ exports.getDeliveryUsers = async (req, res) => {
     }
 
     const User = require('../models/User');
-    const deliveryUsers = await User.find({ role: 'delivery', isActive: true }).select('name email');
+    const deliveryUsers = await User.find({ role: 'delivery', isActive: true }).select('name email phone');
 
     res.status(200).json({
       success: true,

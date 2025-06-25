@@ -119,7 +119,7 @@ QuotationSchema.pre(/^find/, function(next) {
     select: 'name itemcode'
   }).populate({
     path: 'assignedDelivery',
-    select: 'name email'
+    select: 'name email phone'
   }).populate({
     path: 'createdBy',
     select: 'name email'
