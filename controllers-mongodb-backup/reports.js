@@ -1,4 +1,10 @@
-const { supabase } = require('../config/supabase');
+const Sale = require('../models/Sale');
+const Inventory = require('../models/Inventory');
+const PurchaseOrder = require('../models/PurchaseOrder');
+const Customer = require('../models/Customer');
+const User = require('../models/User');
+const Quotation = require('../models/Quotation');
+
 /**
  * @desc    Get sales report
  * @route   GET /api/v1/reports/sales
@@ -25,7 +31,7 @@ exports.getSalesReport = async (req, res, next) => {
     endDateObj.setHours(23, 59, 59, 999);
     
     const query = {
-      created_at: {
+      createdAt: {
         $gte: startDateObj,
         $lte: endDateObj
       }
@@ -39,14 +45,14 @@ exports.getSalesReport = async (req, res, next) => {
     }
     
     // Get all sales first to check if there are any
-    const allSales = await supabase.from('Sale').select('*').limit(5);
-    console.log('Sales Report - Total sales in DB:', await supabase.from('Sale').select('*', { count: 'exact', head: true }));
-    console.log('Sales Report - Sample sales:', allSales.map(s => ({ id: s._id, date: s.created_at, total: s.total })));
+    const allSales = await Sale.find({}).limit(5);
+    console.log('Sales Report - Total sales in DB:', await Sale.countDocuments());
+    console.log('Sales Report - Sample sales:', allSales.map(s => ({ id: s._id, date: s.createdAt, total: s.total })));
     
     // Get sales within date range
     const sales = await Sale.find(query)
       .populate('customer', 'name email')
-      .sort({ created_at: -1 });
+      .sort({ createdAt: -1 });
     
     console.log('Sales Report - Filtered sales count:', sales.length);
     
@@ -58,7 +64,7 @@ exports.getSalesReport = async (req, res, next) => {
     // Group sales by day for chart data
     const salesByDay = {};
     sales.forEach(sale => {
-      const date = sale.created_at.toISOString().split('T')[0];
+      const date = sale.createdAt.toISOString().split('T')[0];
       if (!salesByDay[date]) {
         salesByDay[date] = {
           count: 0,
@@ -128,7 +134,7 @@ exports.getDeliveryReport = async (req, res, next) => {
     
     const query = {
       assignedDelivery: { $exists: true, $ne: null },
-      updated_at: {
+      updatedAt: {
         $gte: startDateObj,
         $lte: endDateObj
       }
@@ -150,12 +156,15 @@ exports.getDeliveryReport = async (req, res, next) => {
     const deliveries = await Quotation.find(query)
       .populate('customer', 'name email phone')
       .populate('assignedDelivery', 'name email phone')
-      .sort({ updated_at: -1 });
+      .sort({ updatedAt: -1 });
     
     console.log('Delivery Report - Deliveries found:', deliveries.length);
     
     // Get all delivery users for filtering
-    const deliveryUsers = await supabase.from('User').select('*').select('name email phone');
+    const deliveryUsers = await User.find({ 
+      role: 'delivery',
+      isActive: true 
+    }).select('name email phone');
     
     console.log('Delivery Report - Delivery users found:', deliveryUsers.length);
     
@@ -201,8 +210,8 @@ exports.getDeliveryReport = async (req, res, next) => {
       customerName: delivery.customer?.name || 'Unknown Customer',
       assignedDelivery: delivery.assignedDelivery,
       deliveryPersonnel: delivery.assignedDelivery?.name || 'Not Assigned',
-      assignedDate: delivery.updated_at, // Use updated_at as assignment date
-      created_at: delivery.created_at,
+      assignedDate: delivery.updatedAt, // Use updatedAt as assignment date
+      createdAt: delivery.createdAt,
       status: delivery.status,
       total: delivery.total,
       amount: delivery.total,
@@ -322,7 +331,7 @@ exports.getPurchasesReport = async (req, res, next) => {
     
     // Build query
     const query = {
-      created_at: {
+      createdAt: {
         $gte: new Date(startDate),
         $lte: new Date(endDate)
       }
@@ -336,7 +345,7 @@ exports.getPurchasesReport = async (req, res, next) => {
     // Get purchase orders within date range
     const purchases = await PurchaseOrder.find(query)
       .populate('supplier', 'name')
-      .sort({ created_at: -1 });
+      .sort({ createdAt: -1 });
     
     // Calculate summary statistics
     const totalPurchases = purchases.length;
@@ -346,7 +355,7 @@ exports.getPurchasesReport = async (req, res, next) => {
     // Group purchases by day for chart data
     const purchasesByDay = {};
     purchases.forEach(purchase => {
-      const date = purchase.created_at.toISOString().split('T')[0];
+      const date = purchase.createdAt.toISOString().split('T')[0];
       if (!purchasesByDay[date]) {
         purchasesByDay[date] = {
           count: 0,
@@ -400,7 +409,10 @@ exports.getCustomersReport = async (req, res, next) => {
     console.log('Customer Report - Date range:', { startDate, endDate });
     
     // Get all customers (users with role 'user')
-    const customers = await supabase.from('User').select('*').sort({ created_at: -1 });
+    const customers = await User.find({ 
+      role: 'user',
+      isActive: true 
+    }).sort({ createdAt: -1 });
     
     console.log('Customer Report - Total customers found:', customers.length);
     console.log('Customer Report - Sample customers:', customers.slice(0, 2).map(c => ({ id: c._id, name: c.name, role: c.role })));
@@ -413,7 +425,7 @@ exports.getCustomersReport = async (req, res, next) => {
     
     // Get sales within date range
     const sales = await Sale.find({
-      created_at: {
+      createdAt: {
         $gte: startDateObj,
         $lte: endDateObj
       }
@@ -422,7 +434,7 @@ exports.getCustomersReport = async (req, res, next) => {
     console.log('Customer Report - Sales found in date range:', sales.length);
     console.log('Customer Report - Sample sales:', sales.slice(0, 2).map(s => ({ 
       id: s._id, 
-      date: s.created_at, 
+      date: s.createdAt, 
       total: s.total, 
       customer: s.customer ? s.customer.name : 'No customer' 
     })));
@@ -430,7 +442,7 @@ exports.getCustomersReport = async (req, res, next) => {
     // Calculate summary statistics
     const totalCustomers = customers.length;
     const newCustomers = customers.filter(c => 
-      c.created_at >= startDateObj && c.created_at <= endDateObj
+      c.createdAt >= startDateObj && c.createdAt <= endDateObj
     ).length;
     const totalSales = sales.length;
     const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);

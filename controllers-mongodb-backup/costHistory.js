@@ -1,6 +1,7 @@
-const { supabase } = require('../config/supabase');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
+const CostHistory = require('../models/CostHistory');
+
 // @desc    Get all cost history
 // @route   GET /api/v1/cost-history
 // @access  Private
@@ -48,7 +49,7 @@ exports.getCostHistory = asyncHandler(async (req, res, next) => {
   // Execute query
   const total = await CostHistory.countDocuments(query);
   const costHistory = await CostHistory.find(query)
-    .sort({ created_at: -1 })
+    .sort({ createdAt: -1 })
     .limit(limit)
     .skip(startIndex)
     .populate('itemId', 'name itemCode')
@@ -85,8 +86,8 @@ exports.getCostHistory = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/cost-history/item/:itemId
 // @access  Private
 exports.getCostHistoryByItem = asyncHandler(async (req, res, next) => {
-  const costHistory = await supabase.from('CostHistory').select('*')
-    .sort({ created_at: -1 })
+  const costHistory = await CostHistory.find({ itemId: req.params.itemId })
+    .sort({ createdAt: -1 })
     .populate('userId', 'name email')
     .populate('branchId', 'name');
 
@@ -101,8 +102,8 @@ exports.getCostHistoryByItem = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/cost-history/month/:month
 // @access  Private
 exports.getCostHistoryByMonth = asyncHandler(async (req, res, next) => {
-  const costHistory = await supabase.from('CostHistory').select('*')
-    .sort({ created_at: -1 })
+  const costHistory = await CostHistory.find({ month: req.params.month })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -121,7 +122,7 @@ exports.createCostHistory = asyncHandler(async (req, res, next) => {
   // Add user to req.body
   req.body.userId = req.user.id;
 
-  const costHistory = await supabase.from('CostHistory').insert([req.body]).select().single();
+  const costHistory = await CostHistory.create(req.body);
 
   res.status(201).json({
     success: true,
@@ -136,8 +137,8 @@ exports.getMonthlyCostReport = asyncHandler(async (req, res, next) => {
   const month = req.params.month;
 
   // Get all cost history for the month
-  const monthlyHistory = await supabase.from('CostHistory').select('*')
-    .sort({ created_at: -1 })
+  const monthlyHistory = await CostHistory.find({ month })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -201,7 +202,7 @@ exports.getMonthlyCostReport = asyncHandler(async (req, res, next) => {
 // @route   DELETE /api/v1/cost-history/:id
 // @access  Private/Admin
 exports.deleteCostHistory = asyncHandler(async (req, res, next) => {
-  const costHistory = await supabase.from('CostHistory').select('*').eq('id', req.params.id).single();
+  const costHistory = await CostHistory.findById(req.params.id);
 
   if (!costHistory) {
     return next(new ErrorResponse(`Cost history not found with id of ${req.params.id}`, 404));

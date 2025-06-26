@@ -1,4 +1,5 @@
-const { supabase } = require('../config/supabase');
+const User = require('../models/User');
+const DeviceFingerprint = require('../models/DeviceFingerprint');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -15,18 +16,11 @@ exports.logout = async (req, res) => {
       if (req.user.role === 'admin' || req.user.role === 'superadmin') {
         console.log(`Admin user logout - not deactivating device sessions for user: ${req.user.id}`);
       } else {
-        // Deactivate all active sessions for this user
-        const { error } = await supabase
-          .from('DeviceFingerprint')
-          .update({ is_active: false })
-          .eq('userId', req.user.id)
-          .eq('is_active', true);
-        
-        if (error) {
-          console.error('Error deactivating sessions:', error);
-        } else {
-          console.log(`Deactivated all sessions for user: ${req.user.id}`);
-        }
+        await DeviceFingerprint.updateMany(
+          { userId: req.user.id, isActive: true },
+          { isActive: false }
+        );
+        console.log(`Deactivated all sessions for user: ${req.user.id}`);
       }
     }
     
@@ -52,37 +46,22 @@ exports.register = async (req, res) => {
     const { name, email, password, role } = req.body;
 
     // Check if user already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .single();
+    const userExists = await User.findOne({ email });
 
-    if (existingUser) {
+    if (userExists) {
       return res.status(400).json({
         success: false,
         message: 'User already exists'
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     // Create user
-    const { data: user, error } = await supabase
-      .from('users')
-      .insert([{
-        name,
-        email,
-        password_hash: hashedPassword,
-        role: role || 'customer',
-        is_active: true
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role: role || 'user'
+    });
 
     // Send token response
     sendTokenResponse(user, 201, res);
@@ -111,14 +90,10 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check for user in Supabase
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .single();
+    // Check for user
+    const user = await User.findOne({ email }).select('+password');
 
-    if (error || !user) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -126,7 +101,7 @@ exports.login = async (req, res) => {
     }
 
     // Check if password matches
-    const isMatch = await bcrypt.compare(password, user.password_hash);
+    const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {
       return res.status(401).json({
@@ -136,17 +111,59 @@ exports.login = async (req, res) => {
     }
 
     // Check if user account is active
-    if (user.is_active === false) {
+    if (user.isActive === false) {
       return res.status(401).json({
         success: false,
         message: 'Your account has been deactivated. Please contact an administrator.'
       });
     }
 
-    // Send token response (simplified - device fingerprinting can be added later)
-    sendTokenResponse(user, 200, res);
+    // Process device fingerprint if provided (skip for admin roles)
+    let securityAnalysis = null;
+    console.log('Checking for device fingerprint in request body...');
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Device fingerprint exists:', !!deviceFingerprint);
+    console.log('User role:', user.role);
+    
+    // Skip fingerprinting for admin roles
+    if (user.role === 'admin' || user.role === 'superadmin') {
+      console.log('Admin user detected - skipping device fingerprinting restrictions');
+    } else if (deviceFingerprint) {
+      try {
+        console.log('Processing device fingerprint for user:', user._id);
+        console.log('Fingerprint data received:', Object.keys(deviceFingerprint));
+        console.log('Sample fingerprint data:', {
+          userAgent: deviceFingerprint.userAgent?.substring(0, 50) + '...',
+          platform: deviceFingerprint.platform,
+          timezone: deviceFingerprint.timezone
+        });
+        
+        securityAnalysis = await processDeviceFingerprint(user._id, deviceFingerprint, req);
+        console.log('Security analysis result:', securityAnalysis);
+      } catch (fpError) {
+        console.error('Fingerprint processing error:', fpError);
+        console.error('Error stack:', fpError.stack);
+        
+        // If the error is about session limits or device sharing, block the login
+        if (fpError.message.includes('already logged in') || 
+            fpError.message.includes('already registered to another account')) {
+          return res.status(403).json({
+            success: false,
+            message: fpError.message
+          });
+        }
+        
+        // For other fingerprinting errors, continue with login
+        console.log('Non-blocking fingerprint error, continuing with login...');
+      }
+    } else {
+      console.log('No device fingerprint provided in login request');
+      console.log('Full request body:', JSON.stringify(req.body, null, 2));
+    }
+
+    // Send token response with security analysis
+    sendTokenResponse(user, 200, res, securityAnalysis);
   } catch (err) {
-    console.error('Login error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -161,13 +178,7 @@ exports.login = async (req, res) => {
  */
 exports.getMe = async (req, res) => {
   try {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
-
-    if (error) throw error;
+    const user = await User.findById(req.user.id);
 
     res.status(200).json({
       success: true,
@@ -190,52 +201,17 @@ exports.updateDetails = async (req, res) => {
   try {
     const fieldsToUpdate = {
       name: req.body.name,
-      email: req.body.email,
-      phone: req.body.phone
+      email: req.body.email
     };
 
-    // Handle password update if provided
-    if (req.body.newPassword && req.body.currentPassword) {
-      // Get current user to verify current password
-      const { data: currentUser, error: getUserError } = await supabase
-        .from('users')
-        .select('password_hash')
-        .eq('id', req.user.id)
-        .single();
-
-      if (getUserError) throw getUserError;
-
-      // Check current password
-      const isMatch = await bcrypt.compare(req.body.currentPassword, currentUser.password_hash);
-      
-      if (!isMatch) {
-        return res.status(401).json({
-          success: false,
-          message: 'Current password is incorrect'
-        });
-      }
-
-      // Hash new password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(req.body.newPassword, salt);
-      fieldsToUpdate.password_hash = hashedPassword;
-    }
-
-    const { data: user, error } = await supabase
-      .from('users')
-      .update(fieldsToUpdate)
-      .eq('id', req.user.id)
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // Remove password_hash from response for security
-    const { password_hash, ...userData } = user;
+    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
+      new: true,
+      runValidators: true
+    });
 
     res.status(200).json({
       success: true,
-      data: userData
+      data: user
     });
   } catch (err) {
     res.status(400).json({
@@ -252,7 +228,7 @@ exports.updateDetails = async (req, res) => {
  */
 exports.updatePassword = async (req, res) => {
   try {
-    const user = await supabase.from('User').select('*').eq('id', req.user.id).single().select('+password');
+    const user = await User.findById(req.user.id).select('+password');
 
     // Check current password
     if (!(await user.matchPassword(req.body.currentPassword))) {
@@ -262,7 +238,7 @@ exports.updatePassword = async (req, res) => {
       });
     }
 
-    user.password_hash = req.body.newPassword;
+    user.password = req.body.newPassword;
     await user.save();
 
     sendTokenResponse(user, 200, res);
@@ -333,7 +309,7 @@ const processDeviceFingerprint = async (userId, fingerprintData, req) => {
         timezone: deviceData.location.timezone
       });
       
-      deviceFingerprint = await supabase.from('DeviceFingerprint').insert([deviceData]).select().single();
+      deviceFingerprint = await DeviceFingerprint.create(deviceData);
       console.log('New device created with ID:', deviceFingerprint._id);
     }
     
@@ -347,7 +323,7 @@ const processDeviceFingerprint = async (userId, fingerprintData, req) => {
     // Count active sessions EXCLUDING the current device (before it becomes active)
     const otherActiveSessionsCount = await DeviceFingerprint.countDocuments({
       userId,
-      is_active: true,
+      isActive: true,
       _id: { $ne: deviceFingerprint._id }
     });
     
@@ -359,7 +335,7 @@ const processDeviceFingerprint = async (userId, fingerprintData, req) => {
     // For existing devices, just activate them (they can always log back in)
     if (deviceFingerprint.loginCount > 1) {
       console.log('Existing device logging back in - allowing login');
-      deviceFingerprint.is_active = true;
+      deviceFingerprint.isActive = true;
       await deviceFingerprint.save();
     }
     
@@ -468,15 +444,11 @@ const generateSecurityWarnings = (deviceFingerprint, suspiciousActivity, session
  */
 const sendTokenResponse = (user, statusCode, res, securityAnalysis = null) => {
   // Create token
-  const token = jwt.sign(
-    { id: user.id },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '30d' }
-  );
+  const token = user.getSignedJwtToken();
 
   const options = {
     expires: new Date(
-      Date.now() + (process.env.JWT_COOKIE_EXPIRE || 30) * 24 * 60 * 60 * 1000
+      Date.now() + process.env.JWT_COOKIE_EXPIRE * 24 * 60 * 60 * 1000
     ),
     httpOnly: true
   };
@@ -489,14 +461,14 @@ const sendTokenResponse = (user, statusCode, res, securityAnalysis = null) => {
     success: true,
     token,
     user: {
-      id: user.id,
+      id: user._id,
       name: user.name,
       email: user.email,
       phone: user.phone,
       department: user.department,
-      address: user.address,
-      is_active: user.is_active,
-      role: user.role
+      isActive: user.isActive,
+      role: user.role,
+      branch: user.branch
     }
   };
 

@@ -1,4 +1,5 @@
-const { supabase } = require('../config/supabase');
+const Customer = require('../models/Customer');
+
 /**
  * @desc    Get all customers
  * @route   GET /api/v1/customers
@@ -35,7 +36,7 @@ exports.getCustomers = async (req, res) => {
       const sortBy = req.query.sort.split(',').join(' ');
       query = query.sort(sortBy);
     } else {
-      query = query.sort('-created_at');
+      query = query.sort('-createdAt');
     }
 
     // Pagination
@@ -88,7 +89,7 @@ exports.getCustomers = async (req, res) => {
  */
 exports.getCustomer = async (req, res) => {
   try {
-    const customer = await supabase.from('Customer').select('*').eq('id', req.params.id).single();
+    const customer = await Customer.findById(req.params.id);
 
     if (!customer) {
       return res.status(404).json({
@@ -116,7 +117,7 @@ exports.getCustomer = async (req, res) => {
  */
 exports.createCustomer = async (req, res) => {
   try {
-    const customer = await supabase.from('Customer').insert([req.body]).select().single();
+    const customer = await Customer.create(req.body);
 
     res.status(201).json({
       success: true,
@@ -137,7 +138,10 @@ exports.createCustomer = async (req, res) => {
  */
 exports.updateCustomer = async (req, res) => {
   try {
-    const customer = await supabase.from('Customer').update(req.body).eq('id', req.params.id).select().single();
+    const customer = await Customer.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
 
     if (!customer) {
       return res.status(404).json({
@@ -165,7 +169,7 @@ exports.updateCustomer = async (req, res) => {
  */
 exports.deleteCustomer = async (req, res) => {
   try {
-    const customer = await supabase.from('Customer').select('*').eq('id', req.params.id).single();
+    const customer = await Customer.findById(req.params.id);
 
     if (!customer) {
       return res.status(404).json({

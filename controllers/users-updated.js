@@ -16,17 +16,11 @@ exports.getUsers = async (req, res) => {
     if (error) {
       throw error;
     }
-
-    // Remove password_hash from response
-    const sanitizedUsers = users.map(user => {
-      const { password_hash, ...userData } = user;
-      return userData;
-    });
     
     res.status(200).json({
       success: true,
-      count: sanitizedUsers.length,
-      data: sanitizedUsers
+      count: users.length,
+      data: users
     });
   } catch (err) {
     console.error('Get users error:', err);
@@ -59,13 +53,10 @@ exports.getUser = async (req, res) => {
       }
       throw error;
     }
-
-    // Remove password_hash from response
-    const { password_hash, ...userData } = user;
     
     res.status(200).json({
       success: true,
-      data: userData
+      data: user
     });
   } catch (err) {
     console.error('Get user error:', err);
@@ -83,7 +74,7 @@ exports.getUser = async (req, res) => {
  */
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, phone, department, address, is_active, password, role } = req.body;
+    const { name, email, phone, department, address, is_active, password, role, branch } = req.body;
 
     // Check if user already exists
     const { data: existingUser, error: checkError } = await supabase
@@ -106,10 +97,8 @@ exports.createUser = async (req, res) => {
     // Get environment variable for customer role limit
     const maxCustomerRoleUsers = parseInt(process.env.MAX_CUSTOMER_ROLE_USERS) || 3;
 
-    // Determine the actual role that will be assigned - default to 'customer'
-    // Valid roles: 'customer', 'admin', 'superadmin', 'delivery'
-    const validRoles = ['customer', 'admin', 'superadmin', 'delivery'];
-    const actualRole = (role && validRoles.includes(role)) ? role : 'customer';
+    // Determine the actual role that will be assigned (updated from 'user' to 'customer')
+    const actualRole = role || 'customer';
     
     // Check if trying to create a user with role 'customer' and if limit is reached
     if (actualRole === 'customer') {
@@ -134,6 +123,9 @@ exports.createUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Set branch to 'All' if role is admin
+    const userBranch = role === 'admin' ? 'All' : branch || '';
+
     // Create user
     const { data: user, error } = await supabase
       .from('users')
@@ -145,7 +137,8 @@ exports.createUser = async (req, res) => {
         address,
         is_active: is_active !== undefined ? is_active : true,
         password_hash: hashedPassword,
-        role: actualRole
+        role: actualRole,
+        branch: userBranch
       }])
       .select()
       .single();
@@ -155,11 +148,11 @@ exports.createUser = async (req, res) => {
     }
 
     // Remove password_hash from response
-    const { password_hash, ...userData } = user;
+    delete user.password_hash;
 
     res.status(201).json({
       success: true,
-      data: userData
+      data: user
     });
   } catch (err) {
     console.error('Create user error:', err);
@@ -177,19 +170,10 @@ exports.createUser = async (req, res) => {
  */
 exports.updateUser = async (req, res) => {
   try {
-    // Prepare update data
-    const updateData = { ...req.body };
-    
-    // Handle password update if provided
-    if (req.body.password && req.body.password.trim() !== '') {
-      // Hash the new password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(req.body.password, salt);
-      updateData.password_hash = hashedPassword;
+    // Remove password from update if it exists
+    if (req.body.password) {
+      delete req.body.password;
     }
-    
-    // Remove the plain password field (we use password_hash instead)
-    delete updateData.password;
     
     // Get current user to check if role is being changed
     const { data: currentUser, error: getCurrentError } = await supabase
@@ -229,11 +213,15 @@ exports.updateUser = async (req, res) => {
       }
     }
     
+    // Set branch to 'All' if role is admin
+    if (req.body.role === 'admin') {
+      req.body.branch = 'All';
+    }
     
     // Update user
     const { data: user, error } = await supabase
       .from('users')
-      .update(updateData)
+      .update(req.body)
       .eq('id', req.params.id)
       .select()
       .single();
@@ -243,11 +231,11 @@ exports.updateUser = async (req, res) => {
     }
 
     // Remove password_hash from response
-    const { password_hash, ...userData } = user;
+    delete user.password_hash;
     
     res.status(200).json({
       success: true,
-      data: userData
+      data: user
     });
   } catch (err) {
     console.error('Update user error:', err);

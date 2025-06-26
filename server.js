@@ -1,12 +1,11 @@
+// Load environment variables FIRST
+require('dotenv').config();
+
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const http = require('http');
 const webSocketService = require('./utils/websocketService');
-
-// Load environment variables
-dotenv.config();
+const { testConnection } = require('./config/supabase');
 
 // Initialize Express app
 const app = express();
@@ -64,18 +63,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Connect to MongoDB for local development
-const connectDB = require('./config/database');
-
-// Connect to database and wait for connection
+// Connect to Supabase
 let dbConnected = false;
-connectDB()
+
+// Test Supabase connection
+testConnection()
   .then(() => {
     dbConnected = true;
-    console.log('Database connection established');
+    console.log('Supabase connection established');
   })
   .catch((error) => {
-    console.error('Database connection failed:', error);
+    console.error('Supabase connection failed:', error);
+    console.error('Please check your SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env file');
     process.exit(1);
   });
 
@@ -84,7 +83,6 @@ app.use('/api/v1/auth', require('./routes/auth'));
 app.use('/api/v1/devices', require('./routes/deviceFingerprint'));
 app.use('/api/v1/test', require('./routes/test'));
 app.use('/api/v1/inventory', require('./routes/inventory'));
-app.use('/api/v1/customers', require('./routes/customers'));
 app.use('/api/v1/quotations', require('./routes/quotations'));
 app.use('/api/v1/sales', require('./routes/sales'));
 app.use('/api/v1/dashboard', require('./routes/dashboard'));
@@ -105,13 +103,14 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  const isHealthy = dbConnected && mongoose.connection.readyState === 1;
+  const dbStatus = dbConnected ? 'connected' : 'disconnected';
+  const isHealthy = dbConnected;
   
   res.status(isHealthy ? 200 : 503).json({
     success: isHealthy,
     status: isHealthy ? 'healthy' : 'unhealthy',
     database: dbStatus,
+    databaseType: 'Supabase',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
@@ -119,12 +118,13 @@ app.get('/health', (req, res) => {
 
 // Readiness check endpoint
 app.get('/ready', (req, res) => {
-  const isReady = dbConnected && mongoose.connection.readyState === 1;
+  const isReady = dbConnected;
   
   res.status(isReady ? 200 : 503).json({
     success: isReady,
     status: isReady ? 'ready' : 'not ready',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    database: dbConnected ? 'connected' : 'disconnected',
+    databaseType: 'Supabase',
     timestamp: new Date().toISOString()
   });
 });
@@ -210,9 +210,8 @@ if (!process.env.VERCEL) {
         });
       });
       
-      // Close MongoDB connection (no callback in newer versions)
-      await mongoose.connection.close();
-      console.log('MongoDB connection closed');
+      // Supabase connections are stateless, no need to close
+      console.log('Supabase connections are stateless - no cleanup needed');
       
       clearTimeout(shutdownTimeout);
       console.log('Graceful shutdown completed');

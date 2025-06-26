@@ -1,6 +1,7 @@
-const { supabase } = require('../config/supabase');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
+const InventoryHistory = require('../models/InventoryHistory');
+
 // @desc    Get all inventory history
 // @route   GET /api/v1/inventory-history
 // @access  Private
@@ -48,7 +49,7 @@ exports.getInventoryHistory = asyncHandler(async (req, res, next) => {
   // Execute query
   const total = await InventoryHistory.countDocuments(query);
   const inventoryHistory = await InventoryHistory.find(query)
-    .sort({ created_at: -1 })
+    .sort({ createdAt: -1 })
     .limit(limit)
     .skip(startIndex)
     .populate('itemId', 'name itemCode')
@@ -85,8 +86,8 @@ exports.getInventoryHistory = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/inventory-history/item/:itemId
 // @access  Private
 exports.getInventoryHistoryByItem = asyncHandler(async (req, res, next) => {
-  const inventoryHistory = await supabase.from('InventoryHistory').select('*')
-    .sort({ created_at: -1 })
+  const inventoryHistory = await InventoryHistory.find({ itemId: req.params.itemId })
+    .sort({ createdAt: -1 })
     .populate('userId', 'name email')
     .populate('branchId', 'name');
 
@@ -113,7 +114,7 @@ exports.getInventoryHistoryByDateRange = asyncHandler(async (req, res, next) => 
       $lte: end
     }
   })
-    .sort({ created_at: -1 })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -129,8 +130,8 @@ exports.getInventoryHistoryByDateRange = asyncHandler(async (req, res, next) => 
 // @route   GET /api/v1/inventory-history/month/:month
 // @access  Private
 exports.getInventoryHistoryByMonth = asyncHandler(async (req, res, next) => {
-  const inventoryHistory = await supabase.from('InventoryHistory').select('*')
-    .sort({ created_at: -1 })
+  const inventoryHistory = await InventoryHistory.find({ month: req.params.month })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -146,8 +147,8 @@ exports.getInventoryHistoryByMonth = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/inventory-history/operation/:operation
 // @access  Private
 exports.getInventoryHistoryByOperation = asyncHandler(async (req, res, next) => {
-  const inventoryHistory = await supabase.from('InventoryHistory').select('*')
-    .sort({ created_at: -1 })
+  const inventoryHistory = await InventoryHistory.find({ operation: req.params.operation })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -166,7 +167,7 @@ exports.createInventoryHistory = asyncHandler(async (req, res, next) => {
   // Add user to req.body
   req.body.userId = req.user.id;
 
-  const inventoryHistory = await supabase.from('InventoryHistory').insert([req.body]).select().single();
+  const inventoryHistory = await InventoryHistory.create(req.body);
 
   res.status(201).json({
     success: true,
@@ -181,8 +182,8 @@ exports.getMonthlyInventoryReport = asyncHandler(async (req, res, next) => {
   const month = req.params.month;
 
   // Get all history for the month
-  const monthlyHistory = await supabase.from('InventoryHistory').select('*')
-    .sort({ created_at: -1 })
+  const monthlyHistory = await InventoryHistory.find({ month })
+    .sort({ createdAt: -1 })
     .populate('itemId', 'name itemCode')
     .populate('userId', 'name email')
     .populate('branchId', 'name');
@@ -205,14 +206,14 @@ exports.getMonthlyInventoryReport = asyncHandler(async (req, res, next) => {
         itemCode: record.itemCode,
         operations: [],
         operationCount: 0,
-        lastActivity: record.created_at
+        lastActivity: record.createdAt
       };
     }
 
     const item = itemSummary[record.itemId];
     item.operations.push({
       operation: record.operation,
-      timestamp: record.created_at,
+      timestamp: record.createdAt,
       summary: record.changes.summary,
       userName: record.userName,
       reason: record.reason
@@ -220,8 +221,8 @@ exports.getMonthlyInventoryReport = asyncHandler(async (req, res, next) => {
     item.operationCount += 1;
 
     // Keep track of most recent activity
-    if (new Date(record.created_at) > new Date(item.lastActivity)) {
-      item.lastActivity = record.created_at;
+    if (new Date(record.createdAt) > new Date(item.lastActivity)) {
+      item.lastActivity = record.createdAt;
     }
   });
 
@@ -256,7 +257,7 @@ exports.getMonthlyInventoryReport = asyncHandler(async (req, res, next) => {
 // @route   DELETE /api/v1/inventory-history/:id
 // @access  Private/Admin
 exports.deleteInventoryHistory = asyncHandler(async (req, res, next) => {
-  const inventoryHistory = await supabase.from('InventoryHistory').select('*').eq('id', req.params.id).single();
+  const inventoryHistory = await InventoryHistory.findById(req.params.id);
 
   if (!inventoryHistory) {
     return next(new ErrorResponse(`Inventory history not found with id of ${req.params.id}`, 404));

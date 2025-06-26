@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { supabase } = require('../config/supabase');
 
 class WebSocketService {
   constructor() {
@@ -41,16 +41,22 @@ class WebSocketService {
 
       // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id);
+      
+      // Get user from Supabase
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', decoded.id)
+        .single();
 
-      if (!user) {
+      if (error || !user) {
         console.log('WebSocket connection rejected: Invalid user');
         ws.close(1008, 'Invalid user');
         return;
       }
 
       // Generate connection ID
-      const connectionId = `${user._id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const connectionId = `${user.id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
       // Store client connection with user info
       this.clients.set(ws, {

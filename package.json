@@ -9,16 +9,16 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "seed": "node seeder.js -i",
-    "seed:delete": "node seeder.js -d",
-    "check-db": "node check-mongodb.js",
-    "start-safe": "node start-server.js",
+    "test-connection": "node test-supabase-connection.js",
+    "migrate-data": "node data-migration.js migrate",
+    "export-data": "node data-migration.js export",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test-deploy": "node deploy-test.js",
     "test-local": "node deploy-test.js http://localhost:8000"
   },
   "keywords": [
-    "mongodb",
+    "supabase",
+    "postgresql",
     "express",
     "node",
     "api",
@@ -29,12 +29,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.50.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
-    "mongoose": "^7.0.3",
     "multer": "^2.0.1",
     "ws": "^8.18.2",
     "xlsx": "^0.18.5"

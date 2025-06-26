@@ -1,4 +1,4 @@
-const { supabase } = require('../config/supabase');
+const Inventory = require('../models/Inventory');
 const XLSX = require('xlsx');
 
 /**
@@ -17,30 +17,33 @@ exports.searchInventory = async (req, res) => {
       });
     }
     
-    // Search in Supabase using ilike for case-insensitive search
-    let searchQuery = supabase.from('inventory').select('*');
+    // Create search filter - handle potential null/undefined barcode values
+    const searchConditions = [
+      { name: { $regex: query, $options: 'i' } },
+      { itemcode: parseInt(query) || 0 }
+    ];
     
-    // Check if query is a number (for itemcode search)
-    const numericQuery = parseInt(query);
-    if (!isNaN(numericQuery)) {
-      // Search by itemcode if it's a number
-      searchQuery = searchQuery.eq('itemcode', numericQuery);
-    } else {
-      // Search by name or barcode using ilike (case-insensitive)
-      searchQuery = searchQuery.or(`name.ilike.%${query}%,barcode.ilike.%${query}%`);
+    // Only add barcode search if query is not a number (to avoid regex errors)
+    if (isNaN(parseInt(query))) {
+      searchConditions.push({ 
+        barcode: { 
+          $regex: query, 
+          $options: 'i',
+          $ne: null // Exclude null barcodes from regex search
+        } 
+      });
     }
     
-    const { data: inventory, error } = await searchQuery;
+    const searchFilter = { $or: searchConditions };
     
-    if (error) throw error;
+    const inventory = await Inventory.find(searchFilter);
     
     res.status(200).json({
       success: true,
-      count: inventory?.length || 0,
-      data: inventory || []
+      count: inventory.length,
+      data: inventory
     });
   } catch (err) {
-    console.error('Search inventory error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -55,23 +58,36 @@ exports.searchInventory = async (req, res) => {
  */
 exports.getInventory = async (req, res) => {
   try {
-    // Build Supabase query
-    let query = supabase.from('inventory').select('*');
+    // Copy req.query
+    const reqQuery = { ...req.query };
 
-    // Apply filters from query parameters
-    Object.keys(req.query).forEach(key => {
-      if (!['select', 'sort', 'page', 'limit'].includes(key)) {
-        query = query.eq(key, req.query[key]);
-      }
-    });
+    // Fields to exclude
+    const removeFields = ['select', 'sort', 'page', 'limit'];
+
+    // Loop over removeFields and delete them from reqQuery
+    removeFields.forEach(param => delete reqQuery[param]);
+
+    // Create query string
+    let queryStr = JSON.stringify(reqQuery);
+
+    // Create operators ($gt, $gte, etc)
+    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+
+    // Finding resource
+    let query = Inventory.find(JSON.parse(queryStr));
+
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(',').join(' ');
+      query = query.select(fields);
+    }
 
     // Sort
     if (req.query.sort) {
-      const sortField = req.query.sort.replace('-', '');
-      const ascending = !req.query.sort.startsWith('-');
-      query = query.order(sortField, { ascending });
+      const sortBy = req.query.sort.split(',').join(' ');
+      query = query.sort(sortBy);
     } else {
-      query = query.order('created_at', { ascending: false });
+      query = query.sort('-createdAt');
     }
 
     // Pagination
@@ -79,21 +95,12 @@ exports.getInventory = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 25;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
+    const total = await Inventory.countDocuments(JSON.parse(queryStr));
 
-    // Get total count for pagination
-    const { count: total, error: countError } = await supabase
-      .from('inventory')
-      .select('*', { count: 'exact', head: true });
+    query = query.skip(startIndex).limit(limit);
 
-    if (countError) throw countError;
-
-    // Apply pagination
-    query = query.range(startIndex, startIndex + limit - 1);
-
-    // Execute query
-    const { data: inventory, error } = await query;
-
-    if (error) throw error;
+    // Executing query
+    const inventory = await query;
 
     // Pagination result
     const pagination = {};
@@ -114,13 +121,12 @@ exports.getInventory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: inventory?.length || 0,
-      total: total || 0,
+      count: inventory.length,
+      total: total,
       pagination,
-      data: inventory || []
+      data: inventory
     });
   } catch (err) {
-    console.error('Get inventory error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -135,13 +141,9 @@ exports.getInventory = async (req, res) => {
  */
 exports.getInventoryItem = async (req, res) => {
   try {
-    const { data: item, error } = await supabase
-      .from('inventory')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+    const item = await Inventory.findById(req.params.id);
 
-    if (error || !item) {
+    if (!item) {
       return res.status(404).json({
         success: false,
         message: `Inventory item not found with id of ${req.params.id}`
@@ -153,7 +155,6 @@ exports.getInventoryItem = async (req, res) => {
       data: item
     });
   } catch (err) {
-    console.error('Get inventory item error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -168,20 +169,13 @@ exports.getInventoryItem = async (req, res) => {
  */
 exports.createInventoryItem = async (req, res) => {
   try {
-    const { data: item, error } = await supabase
-      .from('inventory')
-      .insert([req.body])
-      .select()
-      .single();
-
-    if (error) throw error;
+    const item = await Inventory.create(req.body);
 
     res.status(201).json({
       success: true,
       data: item
     });
   } catch (err) {
-    console.error('Create inventory item error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -196,14 +190,10 @@ exports.createInventoryItem = async (req, res) => {
  */
 exports.updateInventoryItem = async (req, res) => {
   try {
-    const { data: item, error } = await supabase
-      .from('inventory')
-      .update(req.body)
-      .eq('id', req.params.id)
-      .select()
-      .single();
-
-    if (error) throw error;
+    const item = await Inventory.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
 
     if (!item) {
       return res.status(404).json({
@@ -217,7 +207,6 @@ exports.updateInventoryItem = async (req, res) => {
       data: item
     });
   } catch (err) {
-    console.error('Update inventory item error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -233,42 +222,22 @@ exports.updateInventoryItem = async (req, res) => {
  */
 exports.deleteInventoryItem = async (req, res) => {
   try {
-    // Check if ID is provided
-    if (!req.params.id || req.params.id === 'undefined') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid inventory item ID provided'
-      });
-    }
+    const item = await Inventory.findById(req.params.id);
 
-    // Check if item exists first
-    const { data: item, error: selectError } = await supabase
-      .from('inventory')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (selectError || !item) {
+    if (!item) {
       return res.status(404).json({
         success: false,
         message: `Inventory item not found with id of ${req.params.id}`
       });
     }
 
-    // Delete the item
-    const { error: deleteError } = await supabase
-      .from('inventory')
-      .delete()
-      .eq('id', req.params.id);
-
-    if (deleteError) throw deleteError;
+    await item.deleteOne();
 
     res.status(200).json({
       success: true,
       data: {}
     });
   } catch (err) {
-    console.error('Delete inventory item error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -391,11 +360,11 @@ exports.importExcelBatch = async (req, res) => {
           let existingItem = null;
           
           if (inventoryItem.itemcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('itemcode', inventoryItem.itemcode ).single();
+            existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
           }
           
           if (!existingItem && inventoryItem.barcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('barcode', inventoryItem.barcode ).single();
+            existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
           }
 
           if (existingItem) {
@@ -409,12 +378,15 @@ exports.importExcelBatch = async (req, res) => {
               itemcode: existingItem.itemcode
             };
             
-            await supabase.from('Inventory').update(updateData).eq('id', existingItem._id).select().single();
+            await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
+              new: true,
+              runValidators: true
+            });
             
             return { type: 'updated', name: inventoryItem.name };
           } else {
             // Create new item
-            await supabase.from('Inventory').insert([inventoryItem]).select().single();
+            await Inventory.create(inventoryItem);
             return { type: 'created', name: inventoryItem.name };
           }
         } catch (error) {
@@ -526,7 +498,7 @@ exports.importExcel = async (req, res) => {
     let errors = [];
 
     // Count existing items before import for comparison
-    const existingItemsCount = await supabase.from('Inventory').select('*', { count: 'exact', head: true });
+    const existingItemsCount = await Inventory.countDocuments();
     console.log(`Starting import: ${existingItemsCount} items currently in database`);
 
     // Process data in batches to prevent timeouts
@@ -597,12 +569,12 @@ exports.importExcel = async (req, res) => {
           
           // First check by itemcode
           if (inventoryItem.itemcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('itemcode', inventoryItem.itemcode ).single();
+            existingItem = await Inventory.findOne({ itemcode: inventoryItem.itemcode });
           }
           
           // If not found by itemcode and barcode exists, check by barcode
           if (!existingItem && inventoryItem.barcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('barcode', inventoryItem.barcode ).single();
+            existingItem = await Inventory.findOne({ barcode: inventoryItem.barcode });
           }
 
           if (existingItem) {
@@ -616,12 +588,15 @@ exports.importExcel = async (req, res) => {
               itemcode: existingItem.itemcode // Preserve original itemcode
             };
             
-            await supabase.from('Inventory').update(updateData).eq('id', existingItem._id).select().single();
+            await Inventory.findByIdAndUpdate(existingItem._id, updateData, {
+              new: true,
+              runValidators: true
+            });
             
             return { type: 'updated', name: inventoryItem.name };
           } else {
             // Create new item
-            await supabase.from('Inventory').insert([inventoryItem]).select().single();
+            await Inventory.create(inventoryItem);
             return { type: 'created', name: inventoryItem.name };
           }
         } catch (error) {
@@ -652,7 +627,7 @@ exports.importExcel = async (req, res) => {
     }
 
     // Count items after import for verification
-    const finalItemsCount = await supabase.from('Inventory').select('*', { count: 'exact', head: true });
+    const finalItemsCount = await Inventory.countDocuments();
     console.log(`Import completed: ${finalItemsCount} total items in database (was ${existingItemsCount})`);
     console.log(`Import summary: ${created} created, ${updated} updated, ${errors.length} errors`);
     

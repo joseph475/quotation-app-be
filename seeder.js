@@ -8,14 +8,8 @@ dotenv.config();
 // Load models
 const User = require('./models/User');
 const Inventory = require('./models/Inventory');
-const Customer = require('./models/Customer');
 const Quotation = require('./models/Quotation');
 const Sale = require('./models/Sale');
-const Supplier = require('./models/Supplier');
-const PurchaseOrder = require('./models/PurchaseOrder');
-const PurchaseReceiving = require('./models/PurchaseReceiving');
-const Branch = require('./models/Branch');
-const StockTransfer = require('./models/StockTransfer');
 
 // Connect to DB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/quotation-app', {

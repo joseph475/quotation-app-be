@@ -1,4 +1,6 @@
-const { supabase } = require('../config/supabase');
+const Sale = require('../models/Sale');
+const Inventory = require('../models/Inventory');
+
 /**
  * @desc    Get all sales
  * @route   GET /api/v1/sales
@@ -6,26 +8,41 @@ const { supabase } = require('../config/supabase');
  */
 exports.getSales = async (req, res) => {
   try {
-    // Build Supabase query with customer details
-    let query = supabase.from('sales').select(`
-      *,
-      customer:users!customer_id(id, name, email)
-    `);
+    // Copy req.query
+    const reqQuery = { ...req.query };
 
-    // Apply filters from query parameters
-    Object.keys(req.query).forEach(key => {
-      if (!['select', 'sort', 'page', 'limit'].includes(key)) {
-        query = query.eq(key, req.query[key]);
-      }
-    });
+    // Fields to exclude
+    const removeFields = ['select', 'sort', 'page', 'limit'];
+
+    // Loop over removeFields and delete them from reqQuery
+    removeFields.forEach(param => delete reqQuery[param]);
+
+    // Create query string
+    let queryStr = JSON.stringify(reqQuery);
+
+    // Create operators ($gt, $gte, etc)
+    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+
+    // Finding resource
+    let query = Sale.find(JSON.parse(queryStr));
+    
+    // Filter by branch if specified
+    if (req.query.branch) {
+      query = query.find({ branch: req.query.branch });
+    }
+
+    // Select Fields
+    if (req.query.select) {
+      const fields = req.query.select.split(',').join(' ');
+      query = query.select(fields);
+    }
 
     // Sort
     if (req.query.sort) {
-      const sortField = req.query.sort.replace('-', '');
-      const ascending = !req.query.sort.startsWith('-');
-      query = query.order(sortField, { ascending });
+      const sortBy = req.query.sort.split(',').join(' ');
+      query = query.sort(sortBy);
     } else {
-      query = query.order('created_at', { ascending: false });
+      query = query.sort('-createdAt');
     }
 
     // Pagination
@@ -33,21 +50,12 @@ exports.getSales = async (req, res) => {
     const limit = parseInt(req.query.limit, 10) || 25;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
+    const total = await Sale.countDocuments(JSON.parse(queryStr));
 
-    // Get total count for pagination
-    const { count: total, error: countError } = await supabase
-      .from('sales')
-      .select('*', { count: 'exact', head: true });
+    query = query.skip(startIndex).limit(limit);
 
-    if (countError) throw countError;
-
-    // Apply pagination
-    query = query.range(startIndex, startIndex + limit - 1);
-
-    // Execute query
-    const { data: sales, error } = await query;
-
-    if (error) throw error;
+    // Executing query
+    const sales = await query;
 
     // Pagination result
     const pagination = {};
@@ -68,12 +76,11 @@ exports.getSales = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: sales?.length || 0,
+      count: sales.length,
       pagination,
-      data: sales || []
+      data: sales
     });
   } catch (err) {
-    console.error('Get sales error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -88,13 +95,9 @@ exports.getSales = async (req, res) => {
  */
 exports.getSale = async (req, res) => {
   try {
-    const { data: sale, error } = await supabase
-      .from('sales')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
+    const sale = await Sale.findById(req.params.id);
 
-    if (error || !sale) {
+    if (!sale) {
       return res.status(404).json({
         success: false,
         message: `Sale not found with id of ${req.params.id}`
@@ -106,7 +109,6 @@ exports.getSale = async (req, res) => {
       data: sale
     });
   } catch (err) {
-    console.error('Get sale error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -130,11 +132,11 @@ exports.createSale = async (req, res) => {
     }
     
     // Create sale
-    const sale = await supabase.from('Sale').insert([req.body]).select().single();
+    const sale = await Sale.create(req.body);
 
     // Update inventory quantities
     for (const item of sale.items) {
-      const inventoryItem = await supabase.from('Inventory').select('*').eq('id', item.inventory).single();
+      const inventoryItem = await Inventory.findById(item.inventory);
       if (inventoryItem) {
         inventoryItem.quantity -= item.quantity;
         await inventoryItem.save();
@@ -160,71 +162,54 @@ exports.createSale = async (req, res) => {
  */
 exports.updateSale = async (req, res) => {
   try {
-    console.log('Updating sale with ID:', req.params.id);
-    console.log('Update data:', req.body);
+    let sale = await Sale.findById(req.params.id);
 
-    // First check if sale exists
-    const { data: existingSale, error: fetchError } = await supabase
-      .from('sales')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-
-    if (fetchError || !existingSale) {
-      console.error('Sale not found:', fetchError);
+    if (!sale) {
       return res.status(404).json({
         success: false,
         message: `Sale not found with id of ${req.params.id}`
       });
     }
 
-    console.log('Existing sale:', existingSale);
-
     // Make sure user is sale creator or admin
-    if (existingSale.created_by !== req.user.id && req.user.role !== 'admin') {
+    if (sale.createdBy.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: `User ${req.user.id} is not authorized to update this sale`
       });
     }
 
-    // Prepare update data with correct field names for Supabase
-    // Only update the payment_status since that's what we're changing
-    const updateData = {};
-    
-    // Map status to payment_status for Supabase
-    if (req.body.status) {
-      updateData.payment_status = req.body.status;
-    }
-    
-    // Include notes if provided
-    if (req.body.notes !== undefined) {
-      updateData.notes = req.body.notes;
-    }
+    // If updating items, handle inventory changes
+    if (req.body.items) {
+      // Restore original quantities
+      for (const item of sale.items) {
+        const inventoryItem = await Inventory.findById(item.inventory);
+        if (inventoryItem) {
+          inventoryItem.quantity += item.quantity;
+          await inventoryItem.save();
+        }
+      }
 
-    console.log('Update data for Supabase:', updateData);
-
-    // Update the sale
-    const { data: updatedSale, error: updateError } = await supabase
-      .from('sales')
-      .update(updateData)
-      .eq('id', req.params.id)
-      .select('*')
-      .single();
-
-    if (updateError) {
-      console.error('Update error:', updateError);
-      throw updateError;
+      // Deduct new quantities
+      for (const item of req.body.items) {
+        const inventoryItem = await Inventory.findById(item.inventory);
+        if (inventoryItem) {
+          inventoryItem.quantity -= item.quantity;
+          await inventoryItem.save();
+        }
+      }
     }
 
-    console.log('Updated sale:', updatedSale);
+    sale = await Sale.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true
+    });
 
     res.status(200).json({
       success: true,
-      data: updatedSale
+      data: sale
     });
   } catch (err) {
-    console.error('Update sale error:', err);
     res.status(400).json({
       success: false,
       message: err.message
@@ -239,7 +224,7 @@ exports.updateSale = async (req, res) => {
  */
 exports.deleteSale = async (req, res) => {
   try {
-    const sale = await supabase.from('Sale').select('*').eq('id', req.params.id).single();
+    const sale = await Sale.findById(req.params.id);
 
     if (!sale) {
       return res.status(404).json({
@@ -258,7 +243,7 @@ exports.deleteSale = async (req, res) => {
 
     // Restore inventory quantities
     for (const item of sale.items) {
-      const inventoryItem = await supabase.from('Inventory').select('*').eq('id', item.inventory).single();
+      const inventoryItem = await Inventory.findById(item.inventory);
       if (inventoryItem) {
         inventoryItem.quantity += item.quantity;
         await inventoryItem.save();
@@ -295,7 +280,7 @@ exports.updatePayment = async (req, res) => {
       });
     }
 
-    const sale = await supabase.from('Sale').select('*').eq('id', req.params.id).single();
+    const sale = await Sale.findById(req.params.id);
 
     if (!sale) {
       return res.status(404).json({

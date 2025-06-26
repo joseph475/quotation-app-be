@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const DeviceFingerprint = require('../models/DeviceFingerprint');
+const { supabase } = require('../config/supabase');
 
 /**
  * Protect routes - middleware to check if user is authenticated
@@ -29,10 +28,14 @@ exports.protect = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Get user from the token
-    req.user = await User.findById(decoded.id);
+    // Get user from Supabase
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', decoded.id)
+      .single();
 
-    if (!req.user) {
+    if (error || !user) {
       return res.status(401).json({
         success: false,
         message: 'User not found'
@@ -40,12 +43,14 @@ exports.protect = async (req, res, next) => {
     }
 
     // Check if user account is active
-    if (req.user.isActive === false) {
+    if (user.is_active === false) {
       return res.status(401).json({
         success: false,
         message: 'Your account has been deactivated. Please contact an administrator.'
       });
     }
+
+    req.user = user;
 
 
     next();

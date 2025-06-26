@@ -1,5 +1,5 @@
 const express = require('express');
-const DeviceFingerprint = require('../models/DeviceFingerprint');
+const { supabase } = require('../config/supabase');
 const router = express.Router();
 
 // Test endpoint to check if fingerprinting is working
@@ -18,22 +18,32 @@ router.post('/fingerprint-test', async (req, res) => {
     }
     
     // Create a test device fingerprint
-    const testDevice = await DeviceFingerprint.create({
-      userId: userId || 'test-user-id',
-      fingerprintHash: 'test-hash-' + Date.now(),
-      fingerprintData: deviceFingerprint,
-      ipAddress: req.ip || 'test-ip',
-      userAgent: req.headers['user-agent'] || 'test-agent',
-      securityFlags: [],
-      location: {
-        timezone: deviceFingerprint.timezone || 'UTC'
-      }
-    });
+    const { data: testDevice, error } = await supabase
+      .from('DeviceFingerprint')
+      .insert({
+        userId: userId || 'test-user-id',
+        fingerprintHash: 'test-hash-' + Date.now(),
+        fingerprintData: deviceFingerprint,
+        ipAddress: req.ip || 'test-ip',
+        userAgent: req.headers['user-agent'] || 'test-agent',
+        securityFlags: [],
+        location: {
+          timezone: deviceFingerprint.timezone || 'UTC'
+        },
+        is_active: true,
+        isTrusted: false,
+        deviceName: 'Test Device',
+        lastSeen: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
     
     res.json({
       success: true,
       message: 'Test fingerprint created successfully',
-      deviceId: testDevice._id,
+      deviceId: testDevice.id,
       data: testDevice
     });
   } catch (error) {
@@ -48,11 +58,17 @@ router.post('/fingerprint-test', async (req, res) => {
 // Test endpoint to list all devices
 router.get('/devices-test', async (req, res) => {
   try {
-    const devices = await DeviceFingerprint.find({}).limit(10);
+    const { data: devices, error } = await supabase
+      .from('DeviceFingerprint')
+      .select('*')
+      .limit(10);
+    
+    if (error) throw error;
+    
     res.json({
       success: true,
-      count: devices.length,
-      data: devices
+      count: devices?.length || 0,
+      data: devices || []
     });
   } catch (error) {
     console.error('Test devices list error:', error);
