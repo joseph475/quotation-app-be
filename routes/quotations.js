@@ -9,7 +9,10 @@ const {
   rejectQuotation,
   approveQuotation,
   markAsDelivered,
-  getDeliveryUsers
+  getDeliveryUsers,
+  cancelQuotation,
+  approveCancellation,
+  denyCancellation
 } = require('../controllers/quotations');
 
 const router = express.Router();
@@ -44,5 +47,14 @@ router.route('/:id/approve')
 
 router.route('/:id/deliver')
   .post(markAsDelivered);
+
+router.route('/:id/cancel')
+  .post(cancelQuotation);
+
+router.route('/:id/approve-cancellation')
+  .post(approveCancellation);
+
+router.route('/:id/deny-cancellation')
+  .post(denyCancellation);
 
 module.exports = router;

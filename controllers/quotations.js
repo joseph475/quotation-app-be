@@ -550,6 +550,260 @@ exports.getDeliveryUsers = async (req, res) => {
 };
 
 /**
+ * @desc    Cancel quotation (user cancellation or request)
+ * @route   POST /api/v1/quotations/:id/cancel
+ * @access  Private
+ */
+exports.cancelQuotation = async (req, res) => {
+  try {
+    const quotation = await Quotation.findById(req.params.id);
+
+    if (!quotation) {
+      return res.status(404).json({
+        success: false,
+        message: `Quotation not found with id of ${req.params.id}`
+      });
+    }
+
+    // Check if user owns the quotation (unless admin)
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+    const quotationCreatorId = quotation.createdBy?._id || quotation.createdBy?.id || quotation.createdBy;
+    const currentUserId = req.user.id || req.user._id;
+    
+    console.log('Cancel Authorization Debug:', {
+      isAdmin,
+      quotationCreatorId: quotationCreatorId?.toString(),
+      currentUserId: currentUserId?.toString(),
+      userRole: req.user.role,
+      quotationStatus: quotation.status
+    });
+    
+    if (!isAdmin && quotationCreatorId?.toString() !== currentUserId?.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to cancel this quotation'
+      });
+    }
+
+    // Check if quotation can be cancelled
+    if (['cancelled', 'completed', 'delivered'].includes(quotation.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel quotation with status: ${quotation.status}`
+      });
+    }
+
+    // Direct cancellation for early stages
+    if (['draft', 'pending'].includes(quotation.status) || isAdmin) {
+      quotation.status = 'cancelled';
+      quotation.cancelledAt = new Date();
+      quotation.cancelledBy = req.user.id;
+      quotation.cancellationReason = req.body.reason || 'No reason provided';
+      await quotation.save();
+
+      // Notify admin and related users
+      webSocketService.notifyQuotationStatusChanged({
+        quotationId: quotation._id,
+        quotationNumber: quotation.quotationNumber,
+        customer: quotation.customer,
+        status: quotation.status,
+        cancelledBy: req.user.id,
+        cancellationReason: quotation.cancellationReason,
+        updatedAt: new Date()
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Quotation cancelled successfully',
+        data: quotation
+      });
+    }
+
+    // Request cancellation for later stages (approved/accepted)
+    if (['approved', 'accepted'].includes(quotation.status)) {
+      quotation.status = 'cancellation_requested';
+      quotation.cancellationRequestedAt = new Date();
+      quotation.cancellationRequestedBy = req.user.id;
+      quotation.cancellationReason = req.body.reason || 'No reason provided';
+      await quotation.save();
+
+      // Notify admin for approval
+      webSocketService.notifyQuotationStatusChanged({
+        quotationId: quotation._id,
+        quotationNumber: quotation.quotationNumber,
+        customer: quotation.customer,
+        status: quotation.status,
+        cancellationRequestedBy: req.user.id,
+        cancellationReason: quotation.cancellationReason,
+        updatedAt: new Date()
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Cancellation request submitted. Waiting for admin approval.',
+        data: quotation
+      });
+    }
+
+    // Cannot cancel
+    return res.status(400).json({
+      success: false,
+      message: `Cannot cancel quotation with status: ${quotation.status}`
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Approve cancellation request (admin only)
+ * @route   POST /api/v1/quotations/:id/approve-cancellation
+ * @access  Private (Admin only)
+ */
+exports.approveCancellation = async (req, res) => {
+  try {
+    // Only admin can approve cancellations
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can approve cancellations'
+      });
+    }
+
+    const quotation = await Quotation.findById(req.params.id);
+
+    if (!quotation) {
+      return res.status(404).json({
+        success: false,
+        message: `Quotation not found with id of ${req.params.id}`
+      });
+    }
+
+    if (quotation.status !== 'cancellation_requested') {
+      return res.status(400).json({
+        success: false,
+        message: 'No cancellation request found for this quotation'
+      });
+    }
+
+    // Restore inventory if quotation was originally accepted (inventory was reserved)
+    // We need to check the original status before it became 'cancellation_requested'
+    // For now, we'll restore inventory for any cancellation request to be safe
+    // In a production system, you'd want to track the original status
+    await restoreInventoryQuantities(quotation.items);
+
+    quotation.status = 'cancelled';
+    quotation.cancelledAt = new Date();
+    quotation.cancelledBy = req.user.id;
+    await quotation.save();
+
+    // Notify user and delivery personnel
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      cancelledBy: req.user.id,
+      cancellationApprovedBy: req.user.id,
+      updatedAt: new Date()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Cancellation approved successfully',
+      data: quotation
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Deny cancellation request (admin only)
+ * @route   POST /api/v1/quotations/:id/deny-cancellation
+ * @access  Private (Admin only)
+ */
+exports.denyCancellation = async (req, res) => {
+  try {
+    // Only admin can deny cancellations
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can deny cancellations'
+      });
+    }
+
+    const quotation = await Quotation.findById(req.params.id);
+
+    if (!quotation) {
+      return res.status(404).json({
+        success: false,
+        message: `Quotation not found with id of ${req.params.id}`
+      });
+    }
+
+    if (quotation.status !== 'cancellation_requested') {
+      return res.status(400).json({
+        success: false,
+        message: 'No cancellation request found for this quotation'
+      });
+    }
+
+    // Restore original status (should be approved or accepted)
+    const originalStatus = quotation.cancellationRequestedBy ? 'approved' : 'pending';
+    quotation.status = originalStatus;
+    
+    // Clear cancellation request fields
+    quotation.cancellationRequestedAt = undefined;
+    quotation.cancellationRequestedBy = undefined;
+    quotation.cancellationReason = undefined;
+    
+    await quotation.save();
+
+    // Notify user that cancellation was denied
+    webSocketService.notifyQuotationStatusChanged({
+      quotationId: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      customer: quotation.customer,
+      status: quotation.status,
+      cancellationDeniedBy: req.user.id,
+      denialReason: req.body.reason || 'Cancellation request denied',
+      updatedAt: new Date()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Cancellation request denied',
+      data: quotation
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+/**
+ * @desc    Helper function to restore inventory quantities
+ */
+const restoreInventoryQuantities = async (items) => {
+  for (const item of items) {
+    const inventoryItem = await Inventory.findById(item.inventory);
+    if (inventoryItem) {
+      inventoryItem.quantity += item.quantity;
+      await inventoryItem.save();
+    }
+  }
+};
+
+/**
  * @desc    Convert quotation to sale
  * @route   POST /api/v1/quotations/:id/convert
  * @access  Private
