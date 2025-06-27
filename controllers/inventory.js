@@ -391,11 +391,27 @@ exports.importExcelBatch = async (req, res) => {
           let existingItem = null;
           
           if (inventoryItem.itemcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('itemcode', inventoryItem.itemcode ).single();
+            const { data, error } = await supabase
+              .from('inventory')
+              .select('*')
+              .eq('itemcode', inventoryItem.itemcode)
+              .single();
+            
+            if (!error && data) {
+              existingItem = data;
+            }
           }
           
           if (!existingItem && inventoryItem.barcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('barcode', inventoryItem.barcode ).single();
+            const { data, error } = await supabase
+              .from('inventory')
+              .select('*')
+              .eq('barcode', inventoryItem.barcode)
+              .single();
+            
+            if (!error && data) {
+              existingItem = data;
+            }
           }
 
           if (existingItem) {
@@ -406,15 +422,29 @@ exports.importExcelBatch = async (req, res) => {
               unit: inventoryItem.unit,
               cost: inventoryItem.cost,
               price: inventoryItem.price,
-              itemcode: existingItem.itemcode
+              updated_at: new Date().toISOString()
             };
             
-            await supabase.from('Inventory').update(updateData).eq('id', existingItem._id).select().single();
+            const { data: updatedItem, error: updateError } = await supabase
+              .from('inventory')
+              .update(updateData)
+              .eq('id', existingItem.id)
+              .select()
+              .single();
+            
+            if (updateError) throw updateError;
             
             return { type: 'updated', name: inventoryItem.name };
           } else {
             // Create new item
-            await supabase.from('Inventory').insert([inventoryItem]).select().single();
+            const { data: newItem, error: insertError } = await supabase
+              .from('inventory')
+              .insert([inventoryItem])
+              .select()
+              .single();
+            
+            if (insertError) throw insertError;
+            
             return { type: 'created', name: inventoryItem.name };
           }
         } catch (error) {
@@ -526,7 +556,12 @@ exports.importExcel = async (req, res) => {
     let errors = [];
 
     // Count existing items before import for comparison
-    const existingItemsCount = await supabase.from('Inventory').select('*', { count: 'exact', head: true });
+    const { count: existingItemsCount, error: countError } = await supabase
+      .from('inventory')
+      .select('*', { count: 'exact', head: true });
+    
+    if (countError) throw countError;
+    
     console.log(`Starting import: ${existingItemsCount} items currently in database`);
 
     // Process data in batches to prevent timeouts
@@ -597,12 +632,28 @@ exports.importExcel = async (req, res) => {
           
           // First check by itemcode
           if (inventoryItem.itemcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('itemcode', inventoryItem.itemcode ).single();
+            const { data, error } = await supabase
+              .from('inventory')
+              .select('*')
+              .eq('itemcode', inventoryItem.itemcode)
+              .single();
+            
+            if (!error && data) {
+              existingItem = data;
+            }
           }
           
           // If not found by itemcode and barcode exists, check by barcode
           if (!existingItem && inventoryItem.barcode) {
-            existingItem = await supabase.from('Inventory').select('*').eq('barcode', inventoryItem.barcode ).single();
+            const { data, error } = await supabase
+              .from('inventory')
+              .select('*')
+              .eq('barcode', inventoryItem.barcode)
+              .single();
+            
+            if (!error && data) {
+              existingItem = data;
+            }
           }
 
           if (existingItem) {
@@ -613,15 +664,29 @@ exports.importExcel = async (req, res) => {
               unit: inventoryItem.unit,
               cost: inventoryItem.cost,
               price: inventoryItem.price,
-              itemcode: existingItem.itemcode // Preserve original itemcode
+              updated_at: new Date().toISOString()
             };
             
-            await supabase.from('Inventory').update(updateData).eq('id', existingItem._id).select().single();
+            const { data: updatedItem, error: updateError } = await supabase
+              .from('inventory')
+              .update(updateData)
+              .eq('id', existingItem.id)
+              .select()
+              .single();
+            
+            if (updateError) throw updateError;
             
             return { type: 'updated', name: inventoryItem.name };
           } else {
             // Create new item
-            await supabase.from('Inventory').insert([inventoryItem]).select().single();
+            const { data: newItem, error: insertError } = await supabase
+              .from('inventory')
+              .insert([inventoryItem])
+              .select()
+              .single();
+            
+            if (insertError) throw insertError;
+            
             return { type: 'created', name: inventoryItem.name };
           }
         } catch (error) {
@@ -652,18 +717,29 @@ exports.importExcel = async (req, res) => {
     }
 
     // Count items after import for verification
-    const finalItemsCount = await supabase.from('Inventory').select('*', { count: 'exact', head: true });
+    const { count: finalItemsCount, error: finalCountError } = await supabase
+      .from('inventory')
+      .select('*', { count: 'exact', head: true });
+    
+    if (finalCountError) throw finalCountError;
+    
     console.log(`Import completed: ${finalItemsCount} total items in database (was ${existingItemsCount})`);
     console.log(`Import summary: ${created} created, ${updated} updated, ${errors.length} errors`);
     
-    // Log all items after import for debugging
-    const finalItems = await Inventory.find({}, 'itemcode barcode name').lean();
-    console.log('Items after import:', finalItems.map(item => ({
-      id: item._id,
-      itemcode: item.itemcode,
-      barcode: item.barcode,
-      name: item.name
-    })));
+    // Log some items after import for debugging
+    const { data: finalItems, error: finalItemsError } = await supabase
+      .from('inventory')
+      .select('id, itemcode, barcode, name')
+      .limit(10);
+    
+    if (!finalItemsError && finalItems) {
+      console.log('Sample items after import:', finalItems.map(item => ({
+        id: item.id,
+        itemcode: item.itemcode,
+        barcode: item.barcode,
+        name: item.name
+      })));
+    }
 
     res.status(200).json({
       success: true,
