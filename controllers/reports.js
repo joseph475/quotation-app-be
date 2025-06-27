@@ -18,47 +18,55 @@ exports.getSalesReport = async (req, res, next) => {
     
     console.log('Sales Report - Date range:', { startDate, endDate });
     
-    // Build query with proper date handling
-    const startDateObj = new Date(startDate);
+    // First, let's check what sales exist in the database
+    const { data: allSales, error: debugError } = await supabase
+      .from('sales')
+      .select('id, sale_number, total, customer_id, created_at')
+      .limit(10);
+    
+    console.log('Sales Report - Debug: All sales in database (sample):', allSales);
+    console.log('Sales Report - Debug error:', debugError);
+    
+    // Build Supabase query for sales with customer details
+    let query = supabase.from('sales').select(`
+      *,
+      customer:users!customer_id(id, name, email)
+    `);
+    
+    // Add date range filter
+    const startDateISO = new Date(startDate).toISOString();
     const endDateObj = new Date(endDate);
-    // Set end date to end of day
     endDateObj.setHours(23, 59, 59, 999);
+    const endDateISO = endDateObj.toISOString();
     
-    const query = {
-      created_at: {
-        $gte: startDateObj,
-        $lte: endDateObj
-      }
-    };
+    console.log('Sales Report - Date filter:', { startDateISO, endDateISO });
     
-    console.log('Sales Report - Query:', query);
+    query = query.gte('created_at', startDateISO).lte('created_at', endDateISO);
     
     // Add branch filter if provided
     if (branch) {
-      query.branch = branch;
+      query = query.eq('branch', branch);
     }
     
-    // Get all sales first to check if there are any
-    const allSales = await supabase.from('Sale').select('*').limit(5);
-    console.log('Sales Report - Total sales in DB:', await supabase.from('Sale').select('*', { count: 'exact', head: true }));
-    console.log('Sales Report - Sample sales:', allSales.map(s => ({ id: s._id, date: s.created_at, total: s.total })));
+    // Execute query
+    const { data: sales, error: salesError } = await query.order('created_at', { ascending: false });
     
-    // Get sales within date range
-    const sales = await Sale.find(query)
-      .populate('customer', 'name email')
-      .sort({ created_at: -1 });
+    if (salesError) {
+      console.error('Sales Report - Query error:', salesError);
+      throw salesError;
+    }
     
-    console.log('Sales Report - Filtered sales count:', sales.length);
+    console.log('Sales Report - Filtered sales count:', sales?.length || 0);
     
     // Calculate summary statistics
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+    const totalSales = sales?.length || 0;
+    const totalRevenue = sales?.reduce((sum, sale) => sum + (sale.total || 0), 0) || 0;
     const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
     
     // Group sales by day for chart data
     const salesByDay = {};
-    sales.forEach(sale => {
-      const date = sale.created_at.toISOString().split('T')[0];
+    sales?.forEach(sale => {
+      const date = new Date(sale.created_at).toISOString().split('T')[0];
       if (!salesByDay[date]) {
         salesByDay[date] = {
           count: 0,
@@ -77,7 +85,7 @@ exports.getSalesReport = async (req, res, next) => {
     }));
     
     console.log('Sales Report - Response data:', {
-      salesCount: sales.length,
+      salesCount: sales?.length || 0,
       totalRevenue,
       averageSale,
       dailySalesDataCount: dailySalesData.length
@@ -87,7 +95,7 @@ exports.getSalesReport = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        sales,
+        sales: sales || [],
         totalSales,
         totalRevenue,
         averageSale,
@@ -96,7 +104,10 @@ exports.getSalesReport = async (req, res, next) => {
     });
   } catch (err) {
     console.error('Sales Report Error:', err);
-    next(err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
 
@@ -120,60 +131,83 @@ exports.getDeliveryReport = async (req, res, next) => {
     console.log('Delivery Report - Date range:', { startDate, endDate });
     console.log('Delivery Report - Filters:', { deliveryUser, status });
     
-    // Build query with proper date handling
-    const startDateObj = new Date(startDate);
-    const endDateObj = new Date(endDate);
-    // Set end date to end of day
-    endDateObj.setHours(23, 59, 59, 999);
+    // First, let's check what quotations exist with delivery assignments
+    const { data: allQuotationsWithDelivery, error: debugError } = await supabase
+      .from('quotations')
+      .select('id, quotation_number, status, assigned_delivery, created_at, updated_at')
+      .not('assigned_delivery', 'is', null)
+      .limit(10);
     
-    const query = {
-      assignedDelivery: { $exists: true, $ne: null },
-      updated_at: {
-        $gte: startDateObj,
-        $lte: endDateObj
-      }
-    };
+    console.log('Delivery Report - Debug: All quotations with delivery (sample):', allQuotationsWithDelivery);
+    
+    // Build Supabase query for quotations with delivery assignments
+    let query = supabase.from('quotations').select(`
+      *,
+      customer:users!customer_id(id, name, email, phone),
+      assigned_delivery_user:users!assigned_delivery(id, name, email, phone)
+    `);
+    
+    // Filter for quotations with assigned delivery
+    query = query.not('assigned_delivery', 'is', null);
+    
+    // Add date range filter - use created_at instead of updated_at for broader results
+    const startDateISO = new Date(startDate).toISOString();
+    const endDateObj = new Date(endDate);
+    endDateObj.setHours(23, 59, 59, 999);
+    const endDateISO = endDateObj.toISOString();
+    
+    console.log('Delivery Report - Date filter:', { startDateISO, endDateISO });
+    
+    query = query.gte('created_at', startDateISO).lte('created_at', endDateISO);
     
     // Add delivery user filter if provided
     if (deliveryUser && deliveryUser !== 'all') {
-      query.assignedDelivery = deliveryUser;
+      query = query.eq('assigned_delivery', deliveryUser);
     }
     
     // Add status filter if provided
     if (status && status !== 'all') {
-      query.status = status;
+      query = query.eq('status', status);
     }
     
-    console.log('Delivery Report - Query:', query);
+    // Execute query
+    const { data: deliveries, error: deliveriesError } = await query.order('updated_at', { ascending: false });
     
-    // Get quotations with delivery assignments within date range
-    const deliveries = await Quotation.find(query)
-      .populate('customer', 'name email phone')
-      .populate('assignedDelivery', 'name email phone')
-      .sort({ updated_at: -1 });
+    if (deliveriesError) {
+      console.error('Delivery Report - Quotations query error:', deliveriesError);
+      throw deliveriesError;
+    }
     
-    console.log('Delivery Report - Deliveries found:', deliveries.length);
+    console.log('Delivery Report - Deliveries found:', deliveries?.length || 0);
     
     // Get all delivery users for filtering
-    const deliveryUsers = await supabase.from('User').select('*').select('name email phone');
+    const { data: deliveryUsers, error: usersError } = await supabase
+      .from('users')
+      .select('id, name, email, phone')
+      .eq('role', 'delivery');
     
-    console.log('Delivery Report - Delivery users found:', deliveryUsers.length);
+    if (usersError) {
+      console.error('Delivery Report - Users query error:', usersError);
+      throw usersError;
+    }
+    
+    console.log('Delivery Report - Delivery users found:', deliveryUsers?.length || 0);
     
     // Calculate summary statistics
-    const totalDeliveries = deliveries.length;
-    const completedDeliveries = deliveries.filter(d => d.status === 'delivered').length;
-    const pendingDeliveries = deliveries.filter(d => d.status === 'approved' || d.status === 'pending').length;
-    const totalDeliveryAccounts = deliveryUsers.length;
+    const totalDeliveries = deliveries?.length || 0;
+    const completedDeliveries = deliveries?.filter(d => d.status === 'completed').length || 0;
+    const pendingDeliveries = deliveries?.filter(d => d.status === 'approved' || d.status === 'pending').length || 0;
+    const totalDeliveryAccounts = deliveryUsers?.length || 0;
     
     // Group deliveries by delivery user
     const deliveriesByUser = {};
-    deliveries.forEach(delivery => {
-      if (!delivery.assignedDelivery) return;
+    deliveries?.forEach(delivery => {
+      if (!delivery.assigned_delivery_user) return;
       
-      const userId = delivery.assignedDelivery._id.toString();
+      const userId = delivery.assigned_delivery_user.id;
       if (!deliveriesByUser[userId]) {
         deliveriesByUser[userId] = {
-          user: delivery.assignedDelivery,
+          user: delivery.assigned_delivery_user,
           totalDeliveries: 0,
           completedDeliveries: 0,
           pendingDeliveries: 0,
@@ -182,7 +216,7 @@ exports.getDeliveryReport = async (req, res, next) => {
       }
       
       deliveriesByUser[userId].totalDeliveries += 1;
-      if (delivery.status === 'delivered') {
+      if (delivery.status === 'completed') {
         deliveriesByUser[userId].completedDeliveries += 1;
       } else if (delivery.status === 'approved' || delivery.status === 'pending') {
         deliveriesByUser[userId].pendingDeliveries += 1;
@@ -194,22 +228,22 @@ exports.getDeliveryReport = async (req, res, next) => {
     const deliveryAccounts = Object.values(deliveriesByUser);
     
     // Format deliveries for frontend
-    const formattedDeliveries = deliveries.map(delivery => ({
-      _id: delivery._id,
-      quotationNumber: delivery.quotationNumber,
+    const formattedDeliveries = deliveries?.map(delivery => ({
+      id: delivery.id,
+      quotationNumber: delivery.quotation_number || delivery.quotationNumber,
       customer: delivery.customer,
       customerName: delivery.customer?.name || 'Unknown Customer',
-      assignedDelivery: delivery.assignedDelivery,
-      deliveryPersonnel: delivery.assignedDelivery?.name || 'Not Assigned',
-      assignedDate: delivery.updated_at, // Use updated_at as assignment date
+      assignedDelivery: delivery.assigned_delivery_user,
+      deliveryPersonnel: delivery.assigned_delivery_user?.name || 'Not Assigned',
+      assignedDate: delivery.updated_at,
       created_at: delivery.created_at,
       status: delivery.status,
       total: delivery.total,
       amount: delivery.total,
       items: delivery.items || [],
-      deliveryAddress: delivery.deliveryAddress || `${delivery.customer?.name || 'Customer'} Address`,
+      deliveryAddress: delivery.delivery_address || `${delivery.customer?.name || 'Customer'} Address`,
       notes: delivery.notes
-    }));
+    })) || [];
     
     console.log('Delivery Report - Response data:', {
       totalDeliveries,
@@ -225,7 +259,7 @@ exports.getDeliveryReport = async (req, res, next) => {
       data: {
         deliveries: formattedDeliveries,
         deliveryAccounts,
-        deliveryPersonnel: deliveryUsers,
+        deliveryPersonnel: deliveryUsers || [],
         totalDeliveryAccounts,
         totalDeliveries,
         completedDeliveries,
@@ -234,7 +268,10 @@ exports.getDeliveryReport = async (req, res, next) => {
     });
   } catch (err) {
     console.error('Delivery Report Error:', err);
-    next(err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
 
@@ -399,48 +436,68 @@ exports.getCustomersReport = async (req, res, next) => {
     
     console.log('Customer Report - Date range:', { startDate, endDate });
     
-    // Get all customers (users with role 'user')
-    const customers = await supabase.from('User').select('*').sort({ created_at: -1 });
+    // Get all customers (users with role 'customer')
+    const { data: customers, error: customersError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('role', 'customer')
+      .order('created_at', { ascending: false });
     
-    console.log('Customer Report - Total customers found:', customers.length);
-    console.log('Customer Report - Sample customers:', customers.slice(0, 2).map(c => ({ id: c._id, name: c.name, role: c.role })));
+    if (customersError) {
+      console.error('Customer Report - Customers query error:', customersError);
+      throw customersError;
+    }
+    
+    console.log('Customer Report - Total customers found:', customers?.length || 0);
+    console.log('Customer Report - Sample customers:', customers?.slice(0, 2).map(c => ({ id: c.id, name: c.name, role: c.role })) || []);
     
     // Build query with proper date handling
-    const startDateObj = new Date(startDate);
-    const endDateObj = new Date(endDate);
-    // Set end date to end of day
-    endDateObj.setHours(23, 59, 59, 999);
+    const startDateISO = new Date(startDate).toISOString();
+    const salesEndDateObj = new Date(endDate);
+    salesEndDateObj.setHours(23, 59, 59, 999);
+    const endDateISO = salesEndDateObj.toISOString();
     
     // Get sales within date range
-    const sales = await Sale.find({
-      created_at: {
-        $gte: startDateObj,
-        $lte: endDateObj
-      }
-    }).populate('customer', 'name email phone');
+    const { data: sales, error: salesError } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        customer:users!customer_id(id, name, email, phone)
+      `)
+      .gte('created_at', startDateISO)
+      .lte('created_at', endDateISO)
+      .order('created_at', { ascending: false });
     
-    console.log('Customer Report - Sales found in date range:', sales.length);
-    console.log('Customer Report - Sample sales:', sales.slice(0, 2).map(s => ({ 
-      id: s._id, 
+    if (salesError) {
+      console.error('Customer Report - Sales query error:', salesError);
+      throw salesError;
+    }
+    
+    console.log('Customer Report - Sales found in date range:', sales?.length || 0);
+    console.log('Customer Report - Sample sales:', sales?.slice(0, 2).map(s => ({ 
+      id: s.id, 
       date: s.created_at, 
       total: s.total, 
       customer: s.customer ? s.customer.name : 'No customer' 
-    })));
+    })) || []);
     
     // Calculate summary statistics
-    const totalCustomers = customers.length;
-    const newCustomers = customers.filter(c => 
-      c.created_at >= startDateObj && c.created_at <= endDateObj
-    ).length;
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+    const totalCustomers = customers?.length || 0;
+    const customerStartDate = new Date(startDate);
+    const customerEndDate = new Date(endDate);
+    const newCustomers = customers?.filter(c => {
+      const customerDate = new Date(c.created_at);
+      return customerDate >= customerStartDate && customerDate <= customerEndDate;
+    }).length || 0;
+    const totalSales = sales?.length || 0;
+    const totalRevenue = sales?.reduce((sum, sale) => sum + (sale.total || 0), 0) || 0;
     
     // Group sales by customer
     const salesByCustomer = {};
-    sales.forEach(sale => {
-      if (!sale.customer || !sale.customer._id) return;
+    sales?.forEach(sale => {
+      if (!sale.customer || !sale.customer.id) return;
       
-      const customerId = sale.customer._id.toString();
+      const customerId = sale.customer.id;
       if (!salesByCustomer[customerId]) {
         salesByCustomer[customerId] = {
           customer: sale.customer,

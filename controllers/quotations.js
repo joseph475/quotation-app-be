@@ -794,6 +794,36 @@ exports.markAsDelivered = async (req, res) => {
       throw saleError;
     }
 
+    console.log('Created sale:', sale);
+
+    // Create sale items from quotation items
+    if (validItems && validItems.length > 0) {
+      console.log('Creating sale items from quotation items:', validItems);
+      
+      const saleItems = validItems.map(item => ({
+        sale_id: sale.id,
+        inventory_id: item.inventory_id,
+        description: item.inventory?.name || `Item ${item.inventory_id}`,
+        quantity: parseFloat(item.quantity),
+        unit_price: parseFloat(item.price),
+        total: parseFloat(item.total)
+      }));
+
+      console.log('Prepared sale items:', saleItems);
+
+      const { data: createdItems, error: itemsError } = await supabase
+        .from('sale_items')
+        .insert(saleItems)
+        .select();
+
+      if (itemsError) {
+        console.error('Sale items creation error:', itemsError);
+        console.error('Error details:', JSON.stringify(itemsError, null, 2));
+      } else {
+        console.log('Created sale items successfully:', createdItems);
+      }
+    }
+
     // Update inventory quantities
     for (const item of quotation.items) {
       const { data: inventoryItem, error: inventoryFetchError } = await supabase

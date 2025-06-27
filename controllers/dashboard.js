@@ -119,12 +119,13 @@ exports.getRecentSales = async (req, res) => {
  */
 exports.getTopSellingItems = async (req, res) => {
   try {
-    // Get top selling items based on sale_items data
+    // First, try to get data from sale_items table if it exists
     const { data: saleItems, error: saleItemsError } = await supabase
       .from('sale_items')
       .select(`
         inventory_id,
         quantity,
+        unit_price,
         total,
         inventory:inventory_id (
           id,
@@ -133,12 +134,27 @@ exports.getTopSellingItems = async (req, res) => {
         )
       `);
 
-    if (saleItemsError) throw saleItemsError;
+    console.log('Sale items query result:', { saleItems, saleItemsError });
+
+    // If sale_items table doesn't exist or is empty, create a fallback response
+    if (saleItemsError || !saleItems || saleItems.length === 0) {
+      console.log('No sale_items data found, returning empty result');
+      
+      // Return empty result for now - this means no individual sale items are tracked
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
 
     // Aggregate sales data by inventory item
     const salesByItem = {};
+    
     saleItems?.forEach(item => {
       const inventoryId = item.inventory_id;
+      if (!inventoryId) return;
+
       if (!salesByItem[inventoryId]) {
         salesByItem[inventoryId] = {
           inventory: item.inventory,
@@ -148,9 +164,11 @@ exports.getTopSellingItems = async (req, res) => {
         };
       }
       salesByItem[inventoryId].totalQuantitySold += parseFloat(item.quantity || 0);
-      salesByItem[inventoryId].totalRevenue += parseFloat(item.total || 0);
+      salesByItem[inventoryId].totalRevenue += parseFloat(item.total || item.unit_price * item.quantity || 0);
       salesByItem[inventoryId].salesCount += 1;
     });
+
+    console.log('Aggregated sales by item:', salesByItem);
 
     // Convert to array and sort by total quantity sold
     const topSellingItems = Object.values(salesByItem)
@@ -165,6 +183,8 @@ exports.getTopSellingItems = async (req, res) => {
         totalRevenue: item.totalRevenue,
         salesCount: item.salesCount
       }));
+
+    console.log('Top selling items result:', topSellingItems);
 
     res.status(200).json({
       success: true,
